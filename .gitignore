@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+out/
+cache/
+broadcast/
+# never commit wallets or keys
+keystore*.json
+*.key
+*.seed
+*.pem
+.env

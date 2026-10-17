@@ -1,0 +1,4 @@
+# Signed templates and test vectors are hashed byte-for-byte: keep LF everywhere (also on Windows).
+* text=auto eol=lf
+*.png binary
+*.ico binary

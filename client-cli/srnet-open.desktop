@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SRNet link
+Comment=Open srnet:// invite links in the SNApps client
+Exec=srnet open %u
+Terminal=false
+NoDisplay=true
+MimeType=x-scheme-handler/srnet;
+Categories=Network;

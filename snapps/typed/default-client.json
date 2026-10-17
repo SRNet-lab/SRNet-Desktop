@@ -1,0 +1,14 @@
+{
+  "_about": "Shipped default config. Lobby and directory are pre-joined and pinned to their root keys; mail.hosts is the default mail host; mail.contacts are first contacts (added once, so mail from them lands in Inbox; a user \"contacts\" list replaces them and a removed one stays removed). A user config (srnet ui --config FILE, or <home>/client.json) is layered on top: entries with the same id override these, {\"id\": \"lobby\", \"disabled\": true} drops one.",
+  "defaults_version": 1,
+  "collections": [
+    {"id": "lobby", "label": "Lobby", "kind": "room", "name": "lobby",
+     "hosts": ["http://srnet7fqaajaqb6u7ho56znknysg5ime6kfbaymaaih4ba3q1ndo.sesh/c/lobby"],
+     "root_pin": "651eb5300d57102e900b0c9d4c9b9c6cf437f35dbeca80940dceedc51dfb128b"},
+    {"id": "directory", "label": "Directory", "kind": "directory", "name": "directory",
+     "hosts": ["http://srnet7fqaajaqb6u7ho56znknysg5ime6kfbaymaaih4ba3q1ndo.sesh/c/directory"],
+     "root_pin": "960e6ceb53b5a9ac2b90c3b2652e80f329a1a0aa25fd63163c65064e8d938dfa"}
+  ],
+  "mail": {"hosts": ["http://srnet7fqaajaqb6u7ho56znknysg5ime6kfbaymaaih4ba3q1ndo.sesh"],
+           "contacts": [{"name": "SRNet", "link": "srnet://mail/c0b718d04aa0d2e1d7585cbcedd2f2311e044162c18a97a5ac95eab86cfe22e1?x=585a29d88a57d677d089349c9d3661f49d3532b1195c53c58643affb276fc260&h=http%3A%2F%2Fsrnet7fqaajaqb6u7ho56znknysg5ime6kfbaymaaih4ba3q1ndo.sesh&ts=1792173911&sig=9d87f50f00ba154cd950dc57f8fb0935ed078fd0773b31be6d3813ff7cde1decdbe36f5dd2f46581913086924a6562e7c42f3286679d84b68a5afc8857509b04&name=SRNet"}]}
+}

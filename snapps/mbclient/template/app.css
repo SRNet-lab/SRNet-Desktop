@@ -1,0 +1,8 @@
+body{font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:0 12px;background:#111;color:#e8e8e8}
+header{position:sticky;top:0;background:#111;padding:8px 0;border-bottom:1px solid #333}
+button{background:#222;color:#e8e8e8;border:1px solid #444;border-radius:4px;padding:3px 8px;cursor:pointer}
+textarea{width:100%;box-sizing:border-box;background:#1a1a1a;color:#e8e8e8;border:1px solid #444}
+.post{border-bottom:1px solid #2a2a2a;padding:8px 0}
+.post .body{white-space:pre-wrap;word-wrap:break-word;margin:4px 0}
+.muted{color:#888;font-size:.85em}.author{color:#7fb3ff;font-family:monospace}
+.focus{background:#1b2230}

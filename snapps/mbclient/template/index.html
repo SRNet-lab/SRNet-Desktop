@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SRNet message board</title>
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header>
+  <strong>SRNet board</strong> <span id="board"></span>
+  <nav>
+    <button data-view="all">Timeline</button>
+    <button data-view="following">Following</button>
+    <button data-view="people">Follows &amp; mutes</button>
+    <button id="sync">Sync</button>
+    <button id="modtoggle">Show host-hidden posts</button>
+  </nav>
+  <div id="status" class="muted"></div>
+</header>
+<main>
+  <section id="compose">
+    <div id="replying" class="muted" hidden>Replying to <span id="replying-id"></span>
+      <button id="cancel-reply">cancel</button></div>
+    <textarea id="body" maxlength="500" rows="3" placeholder="Write a post (500 characters max)"></textarea>
+    <div><span id="count" class="muted">0/500</span> <button id="send">Post</button></div>
+  </section>
+  <section id="view"></section>
+</main>
+<footer class="muted"><div>Host rules: <span id="rules"></span></div>Interface ships with your client. Hosts send signed data only; every post is verified locally.</footer>
+</body>
+</html>

@@ -1,0 +1,14 @@
+body { font-family: sans-serif; max-width: 70em; margin: 1em auto; padding: 0 1em; color: #222; }
+section { border-top: 1px solid #ccc; padding: .5em 0; }
+label { display: inline-block; margin: .3em 1em .3em 0; }
+table { border-collapse: collapse; }
+td, th { padding: .2em .6em; text-align: left; }
+#board td:first-child { font-family: monospace; font-size: .85em; }
+.kv th { font-weight: normal; color: #555; }
+.small { color: #666; font-size: .85em; }
+#log { background: #f4f4f4; padding: .5em; white-space: pre-wrap; max-height: 15em; overflow: auto; }
+button { margin: .2em; }
+nav { margin: 0 0 1em; }
+.tab { margin-right: .3em; }
+.tab.on { font-weight: bold; text-decoration: underline; }
+.warn { white-space: pre-wrap; border-left: 4px solid #c60; padding-left: .6em; }

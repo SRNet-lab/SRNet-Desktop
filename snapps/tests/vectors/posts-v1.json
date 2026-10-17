@@ -1,0 +1,64 @@
+{
+  "note": "seeds: alice=bytes(0..31), bob=bytes([7])*32; signing domain 'srnet-msgboard-post/v1\\n' + canonical JSON",
+  "valid": [
+    {
+      "envelope": {
+        "post": {
+          "v": 1,
+          "board": "demo",
+          "author": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+          "ts": 1792000000,
+          "body": "hello, SRNet",
+          "reply_to": null,
+          "pow": {
+            "bits": 8,
+            "salt": "vec333"
+          }
+        },
+        "sig": "bfdfbce1a17df188a13a7b052b8ee6db27f47645fae49290f586f7d4a38c8b4b1b9fa214fe866b5eba6f8ffea07400f6cb3c32489d7efef73f90c39a1a1fac0e",
+        "id": "k7boujte9b1hwjma67xzdc3haa"
+      },
+      "canonical_hex": "73726e65742d6d7367626f6172642d706f73742f76310a7b22617574686f72223a2230336131303762666633636531306265316437306464313865373462633039393637653464363330396261353064356631646463383636343132353533316238222c22626f617264223a2264656d6f222c22626f6479223a2268656c6c6f2c2053524e6574222c22706f77223a7b2262697473223a382c2273616c74223a22766563333333227d2c227265706c795f746f223a6e756c6c2c227473223a313739323030303030302c2276223a317d"
+    },
+    {
+      "envelope": {
+        "post": {
+          "v": 1,
+          "board": "demo",
+          "author": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+          "ts": 1792000060,
+          "body": "reply with unicode ✓ and <b>markup</b> that must stay text",
+          "reply_to": "k7boujte9b1hwjma67xzdc3haa",
+          "pow": {
+            "bits": 8,
+            "salt": "vec10"
+          }
+        },
+        "sig": "c82143955ad91e597f96d4412ac7a7fe405f5c1701f51db9c91ad36d1b71a7d62d79a1be5edc42d281270a686fac9af8a69ec5b2269e26be7d8b06f0e1da6407",
+        "id": "fzbqszc38kycrsk9nuzxw6xq6o"
+      },
+      "canonical_hex": "73726e65742d6d7367626f6172642d706f73742f76310a7b22617574686f72223a2265613461366336336532396335323061626566353530376231333265633566393935343737366165626562653762393234323165656136393134343664323263222c22626f617264223a2264656d6f222c22626f6479223a227265706c79207769746820756e69636f646520e29c9320616e64203c623e6d61726b75703c2f623e2074686174206d75737420737461792074657874222c22706f77223a7b2262697473223a382c2273616c74223a227665633130227d2c227265706c795f746f223a226b37626f756a746539623168776a6d613637787a646333686161222c227473223a313739323030303036302c2276223a317d"
+    }
+  ],
+  "invalid": [
+    {
+      "why": "body edited after signing",
+      "envelope": {
+        "post": {
+          "v": 1,
+          "board": "demo",
+          "author": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+          "ts": 1792000000,
+          "body": "hello, SRNet!",
+          "reply_to": null,
+          "pow": {
+            "bits": 8,
+            "salt": "vec333"
+          }
+        },
+        "sig": "bfdfbce1a17df188a13a7b052b8ee6db27f47645fae49290f586f7d4a38c8b4b1b9fa214fe866b5eba6f8ffea07400f6cb3c32489d7efef73f90c39a1a1fac0e",
+        "id": "k7boujte9b1hwjma67xzdc3haa"
+      }
+    }
+  ]
+}

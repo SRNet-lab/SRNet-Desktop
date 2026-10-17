@@ -1,0 +1,79 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install (install.ps1)
+        shell: pwsh
+        run: ./install.ps1 -NoShortcut
+      - name: Shortcut creation
+        shell: pwsh
+        run: |
+          ./install.ps1
+          if (-not (Test-Path "$([Environment]::GetFolderPath('Programs'))\SRNet\SRNet.lnk")) { throw "no Start-menu shortcut" }
+          $cmd = (Get-ItemProperty "HKCU:\Software\Classes\srnet\shell\open\command")."(default)"
+          if ($cmd -notmatch 'srnet\.cmd" open "%1"') { throw "srnet:// handler not registered: $cmd" }
+          & "$env:LOCALAPPDATA\srnet-client\bin\srnet.cmd" open "srnet://$('y' * 52).sesh/room/lobby#root=$('ab' * 32)" --print-only
+          if ($LASTEXITCODE) { throw "srnet open failed" }
+      - name: Unit tests (client)
+        shell: pwsh
+        run: |
+          $py = "$env:LOCALAPPDATA\srnet-client\venv\Scripts\python.exe"
+          cd client-cli
+          & $py -m unittest discover -s tests -v
+          if ($LASTEXITCODE) { exit 1 }
+      - name: Unit tests (SNApps)
+        shell: pwsh
+        run: |
+          $py = "$env:LOCALAPPDATA\srnet-client\venv\Scripts\python.exe"
+          & $py -m pip install -q playwright   # test-only: drives the runner's Chrome for UI tests
+          cd snapps/tests
+          & $py -m unittest -v
+          if ($LASTEXITCODE) { exit 1 }
+      - name: srnet ui and srnet snapps start
+        shell: pwsh
+        run: |
+          $py = "$env:LOCALAPPDATA\srnet-client\venv\Scripts\python.exe"
+          & $py packaging/windows/ci_check.py
+          if ($LASTEXITCODE) { exit 1 }
+      - name: Windows smoke checklist (local test host, loopback only)
+        shell: pwsh
+        run: |
+          $py = "$env:LOCALAPPDATA\srnet-client\venv\Scripts\python.exe"
+          & $py packaging/windows/smoke_local.py
+          if ($LASTEXITCODE) { exit 1 }
+      - name: Uninstall
+        shell: pwsh
+        run: |
+          ./install.ps1 -Uninstall
+          if (Test-Path "HKCU:\Software\Classes\srnet") { throw "srnet:// handler left behind" }
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: ./install.sh
+      - name: Tests
+        run: |
+          PY=~/.local/share/srnet-client/venv/bin/python
+          (cd client-cli && $PY -m unittest discover -s tests) </dev/null
+          $PY -m pip install -q playwright   # test-only: drives the runner's Chrome for UI tests
+          (cd snapps/tests && $PY -m unittest)
+          $PY packaging/windows/smoke_local.py

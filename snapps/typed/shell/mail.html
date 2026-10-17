@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SRNet mail</title><link rel="stylesheet" href="/shell.css"><script src="/mail.js" defer></script></head>
+<body>
+<header id="core-bar"><strong>SRNet</strong> <strong>Mail</strong>
+  <button id="m-fetch">Check mail</button> <span id="m-status" class="muted"></span></header>
+<main id="mail">
+<aside id="m-side"><a href="/" class="item">← SNApps sidebar</a>
+  <button data-f="inbox" class="m-folder">Inbox <span id="u-inbox"></span></button>
+  <button data-f="requests" class="m-folder">Requests <span id="u-requests"></span></button>
+  <button id="m-compose-btn">Write</button>
+  <h4>Your address</h4><textarea id="m-link" readonly rows="4"></textarea>
+  <h4>Mail hosts (1 to 3)</h4><textarea id="m-hosts" rows="3" placeholder="one URL per line"></textarea>
+  <button id="m-hosts-save">Save hosts</button>
+  <h4>Add a contact</h4><input id="m-add-link" placeholder="srnet://mail/… link"><input id="m-add-name" placeholder="name (optional)" maxlength="64">
+  <button id="m-add">Add</button>
+  <h4>Contacts</h4><ul id="m-contacts"></ul>
+</aside>
+<section id="m-list"></section>
+<section id="m-view" hidden></section>
+<section id="m-compose" hidden>
+  <input id="c-to" placeholder="to: name or srnet://mail/… link" size="60"><br>
+  <input id="c-subject" placeholder="subject" maxlength="200" size="60"><br>
+  <textarea id="c-body" rows="12" cols="70" maxlength="49152"></textarea><br>
+  Attach: <input type="file" id="c-file" multiple> <span class="muted">(encrypted on this computer, stored on your file drop; only people you send the message to get the key)</span><br>
+  <input id="c-attach" placeholder="or paste encrypted file links, separated by spaces" size="60"><br>
+  <button id="c-send">Seal &amp; send</button> <button id="c-cancel">Cancel</button>
+</section>
+</main>
+<footer class="muted">Mail is sealed on this computer to the recipient's key and signed by you. Mail hosts store it without being able to read it or see who sent it.</footer>
+</body></html>

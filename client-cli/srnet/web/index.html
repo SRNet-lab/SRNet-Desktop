@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="csrf" content="@TOKEN@">
+<title>SRNet</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<h1>SRNet</h1>
+<nav>
+  <button class="tab" data-tab="snapps">SNApps</button>
+  <button class="tab" data-tab="exits">Exits (Beta)</button>
+  <button class="tab" data-tab="wallet">Wallet / Top up</button>
+</nav>
+
+<section>
+  <label>Keystore passphrase <input id="pw" type="password" autocomplete="off"></label>
+  <button id="refresh">Refresh</button>
+  <p class="small">The passphrase is sent to this local page only for the action you click. It is not saved.</p>
+</section>
+
+<div id="tab-snapps" class="pane">
+  <section>
+    <h2>SNApps</h2>
+    <p>Typed SNApps run in the SNApps window: boards, rooms, wikis, shops, file drops, profiles and plain-HTML .sesh pages.
+      Every record is signature-checked and every template runs sandboxed with no network access.</p>
+    <p>Open it here (it starts with <code>srnet ui</code>):</p>
+    <p><a id="snappslink" href="#" target="_blank" rel="noopener noreferrer">-</a></p>
+  </section>
+</div>
+
+<div id="tab-exits" class="pane">
+  <section>
+    <p class="warn"><b>Beta / Untested.</b> The exit marketplace works but is not production-certified.
+      Buy one hour at a time and keep amounts small.</p>
+  </section>
+  <section>
+    <label>Your .sesh address <input id="cs" size="60" spellcheck="false"></label>
+  </section>
+  <section>
+    <h2>Lease</h2>
+    <table class="kv">
+      <tr><th>Seller</th><td id="seller">-</td></tr>
+      <tr><th>Time left</th><td id="left">-</td></tr>
+      <tr><th>Connected</th><td id="conn">no</td></tr>
+      <tr><th>Auto-renew</th><td><label><input id="ar" type="checkbox"> renew hourly</label></td></tr>
+    </table>
+    <button id="disconnect">Disconnect</button>
+  </section>
+  <section>
+    <h2>Exit sellers</h2>
+    <p class="small" id="boardinfo"></p>
+    <table id="board">
+      <thead><tr><th>Seller</th><th>Region</th><th>USDC/hr</th><th>Last refresh</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="small">Paid from your SRNet balance (top up in Wallet). Payment is final. One hour at a time;
+      auto-renew buys the next hour near the end. With a relayer set, no ETH is needed.</p>
+  </section>
+</div>
+
+<div id="tab-wallet" class="pane">
+  <section>
+    <h2>Wallet</h2>
+    <table class="kv">
+      <tr><th>SRNet balance</th><td id="dep">Unlock to see balances</td></tr>
+      <tr><th>USDC waiting in wallet</th><td id="usdc">Unlock to see balances</td></tr>
+      <tr><th>Wallet address</th><td id="addr">-</td></tr>
+    </table>
+  </section>
+  <section>
+    <h2>Top up: scan the QR or send USDC from any wallet</h2>
+    <label>Amount (USDC) <input id="amt" type="number" min="1" step="1" value="10"></label>
+    <button id="showqr">Show QR</button>
+    <pre id="warn" class="warn"></pre>
+    <img id="qr" alt="" width="240" height="240" hidden>
+    <p class="small" id="uri"></p>
+    <p>Send USDC on Arbitrum One to the address above (scan the QR with a phone wallet, or paste the address into
+      any exchange or wallet). Then press <b>I've sent USDC — deposit now</b>: the client waits for the USDC, signs a
+      gas-free approval, and a relayer moves it into your SRNet balance. Payments, renewals and cash-outs then go
+      through the same relayer, so you never need ETH.</p>
+    <label>Relayer URL (empty: SRNet demo relayer) <input id="relayer" size="40" spellcheck="false" placeholder="https://relayer.example"></label>
+    <button id="saverelayer">Save</button>
+    <button id="topup">I've sent USDC — deposit now</button>
+    <p class="small" id="topupstate"></p>
+  </section>
+</div>
+
+<pre id="log"></pre>
+<script src="/app.js"></script>
+</body>
+</html>

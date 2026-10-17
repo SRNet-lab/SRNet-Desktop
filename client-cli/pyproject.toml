@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "srnet-client"
+version = "0.1.0"
+description = "SRNet client: exits, wallet top-up and local UI"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+dependencies = [
+    "cryptography>=41",
+    "pyzmq>=25",
+    "eth-account>=0.11",
+    "eth-abi>=5",
+]
+
+[project.optional-dependencies]
+qr = ["qrcode>=7"]
+
+[project.scripts]
+srnet = "srnet.cli:main"
+
+[tool.setuptools]
+packages = ["srnet", "srnet.vendor"]
+
+[tool.setuptools.package-dir]
+"srnet" = "srnet"
+"srnet.vendor" = "vendor"
+
+[tool.setuptools.package-data]
+"srnet" = ["web/*"]
+"srnet.vendor" = ["*.md"]

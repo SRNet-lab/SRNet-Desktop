@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=SRNet
+Comment=SNApps, exits and wallet for SRNet
+Exec=srnet ui
+Terminal=false
+Categories=Network;

@@ -1,0 +1,9 @@
+title = "SRNet-Desktop"
+[extend]
+useDefault = true
+[allowlist]
+description = "Public Foundry/Anvil dev mnemonic and dev account 0 key, used only in local tests"
+regexes = [
+  '''test test test test test test test test test test test junk''',
+  '''0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80''',
+]
