@@ -1,4 +1,4 @@
-# SRNet client
+# SRNet client (v0.1 Beta)
 
 One app for SRNet: typed SNApps, the exit marketplace, and your SRNet balance.
 
@@ -301,30 +301,6 @@ its URL in the Wallet tab (or put `"relayer": "<url>"` in `~/.srnet/config.json`
 `SRNET_RELAYER`). Anyone can run one with `srnet-relayer` (see
 [client-cli/README.md](client-cli/README.md)). With `"relayer": "off"`, payments are sent from your
 own wallet instead, which needs a little ETH on Arbitrum One for gas.
-
-The previous contract `0x07bbe156083EbBcc9435C721393Edd36a383E648` stays live, so balances
-there can still be cashed out.
-
-## Testing
-
-```sh
-python3 -m unittest discover -s client-cli/tests           # exits, wallet, top-up, UI
-(cd snapps/tests && python3 -m unittest)                    # typed SNApps
-python3 scripts/smoke.py                                    # local end-to-end, loopback only
-```
-
-The smoke test runs the SNApps demo, lists exits from a locally signed board with a dead first
-copy, and does a full QR top-up on a local anvil chain. The client tests also run a gas-free
-deposit, payment, renewal and cash-out from a wallet holding no ETH (anvil, when Foundry is installed). It uses throwaway keys only.
-
-## Known gaps
-
-- Claim delivery needs sellers running the updated seller pack (`watcher --claim-listen`).
-- SNApp card verification is optional and not bundled; card views report that.
-
-## Security
-
-See [SECURITY.md](SECURITY.md).
 
 ## License
 
