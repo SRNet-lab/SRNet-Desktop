@@ -16,8 +16,6 @@ MAINNET_CHAINS = {42161: "arbitrum-one"}
 CHAINS = {**MAINNET_CHAINS, **TESTNET_CHAINS}
 # Known SRNetBalance deployments. On these chains a listing must point at this contract.
 DEPLOYMENTS = {42161: "0x7E0d01B7dd916BdAB96B0971ab92D160E1664431"}  # fundWithPermit, 2026-10-14
-# Previous live deployment (no fundWithPermit), still on-chain: users can cash out there.
-PREVIOUS_DEPLOYMENTS = {42161: ["0x07bbe156083EbBcc9435C721393Edd36a383E648"]}
 HOUR = 3600
 # Renew when the current lease has at most this many seconds left (the contract allows <= 1 hour).
 RENEW_WINDOW = 600

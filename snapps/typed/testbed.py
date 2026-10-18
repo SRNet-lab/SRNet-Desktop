@@ -47,7 +47,7 @@ def make_exit_board(d: Path):
     bkey, skey = F.new_key(), F.new_key()
     now = int(time.time())
     listing = L.make(skey, payout="0x" + "11" * 20, vendor_id="0x" + "22" * 32, chainid=42161,
-                     contract="0x07bbe156083ebbcc9435c721393edd36a383e648", country="NL", price_per_gb="0.50")
+                     contract="0x" + "33" * 20, country="NL", price_per_gb="0.50")
     body = {"v": 1, "board": L.sesh_of(bf.pub_raw(bkey)), "seq": 3, "issued": now,
             "expires": now + 3600, "max_listing_age_s": bf.DEFAULT_MAX_LISTING_AGE_S,
             "listings": [listing]}

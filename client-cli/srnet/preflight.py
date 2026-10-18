@@ -156,13 +156,13 @@ def _linux_dns_hint() -> str:
         rc, txt = "", ""
     if "127.0.0.53" not in txt and "/run/systemd/resolve/" not in rc:
         return ("/etc/resolv.conf does not use systemd-resolved, so .sesh never reaches Session Router: "
-                "sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf (README step 1)")
+                "sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf (README, Install, step 2: .sesh names)")
     try:
         out = subprocess.run(["resolvectl", "status", "sr-tun0"], capture_output=True, text=True, timeout=5).stdout
     except (OSError, subprocess.SubprocessError):
         out = ""
     if "127.3.2.1" not in out or "~sesh" not in out:
-        return ("sr-tun0 has no .sesh DNS: add the session-router-client dns.conf drop-in from README step 1, "
+        return ("sr-tun0 has no .sesh DNS: add the session-router-client dns.conf drop-in from the README (Install, step 2: .sesh names), "
                 "then sudo systemctl daemon-reload && sudo systemctl restart session-router-client")
     return "resolvectl looks right; check that session-router-client is running (systemctl status session-router-client)"
 

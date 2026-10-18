@@ -1,4 +1,4 @@
-"""Local anvil chain with MockUSDCPermit + SRNetBalance deployed (tests and smoke only).
+"""Local anvil chain with MockUSDCPermit + SRNetBalance deployed (tests and local checks only).
 
 Uses the public anvil dev mnemonic; nothing here touches a real network.
 """

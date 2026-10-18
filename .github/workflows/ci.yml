@@ -50,11 +50,11 @@ jobs:
           $py = "$env:LOCALAPPDATA\srnet-client\venv\Scripts\python.exe"
           & $py packaging/windows/ci_check.py
           if ($LASTEXITCODE) { exit 1 }
-      - name: Windows smoke checklist (local test host, loopback only)
+      - name: Windows local checks (local test host, loopback only)
         shell: pwsh
         run: |
           $py = "$env:LOCALAPPDATA\srnet-client\venv\Scripts\python.exe"
-          & $py packaging/windows/smoke_local.py
+          & $py packaging/windows/check_local.py
           if ($LASTEXITCODE) { exit 1 }
       - name: Uninstall
         shell: pwsh
@@ -76,4 +76,4 @@ jobs:
           (cd client-cli && $PY -m unittest discover -s tests) </dev/null
           $PY -m pip install -q playwright   # test-only: drives the runner's Chrome for UI tests
           (cd snapps/tests && $PY -m unittest)
-          $PY packaging/windows/smoke_local.py
+          $PY packaging/windows/check_local.py

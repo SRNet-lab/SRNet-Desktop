@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local end-to-end smoke. Everything runs on loopback with throwaway keys.
+"""Local end-to-end check. Everything runs on loopback with throwaway keys.
 
 1. Typed SNApps demo (board, room, wiki, profile, shop, file drop, exit view, HTML viewer).
 2. `srnet exits` against a locally served signed exit board, with a dead first copy (failover).
@@ -35,7 +35,7 @@ def free_port():
     s = socket.socket(); s.bind(("127.0.0.1", 0)); p = s.getsockname()[1]; s.close(); return p
 
 
-tmp = Path(tempfile.mkdtemp(prefix="srnet-smoke-"))
+tmp = Path(tempfile.mkdtemp(prefix="srnet-e2e-"))
 
 # 1. typed SNApps
 p = subprocess.run([PY, "scripts/platform_demo.py", "--keys-dir", str(tmp / "demo-keys")],
@@ -107,7 +107,7 @@ else:
         ch0 = chain.ChainCfg(rpc=rpc, contract=bal, private_key="0x" + dev[0].key.hex().removeprefix("0x"))
         ch0.chainid()
         # user wallet: fresh keystore, zero ETH
-        pw = "smoke-only-passphrase"
+        pw = "e2e-only-passphrase"
         user_home = tmp / "user"; user_home.mkdir()
         (user_home / "config.json").write_text(json.dumps({"rpc": rpc, "contract": bal}))
         r = srnet(user_home, "key", "new", env={"SRNET_KEYSTORE_PASSWORD": pw})
@@ -138,5 +138,5 @@ else:
         av.terminate()
 
 srv.shutdown()
-print(f"SMOKE {'PASS' if all(results) else 'FAIL'} ({sum(results)}/{len(results)})")
+print(f"E2E {'PASS' if all(results) else 'FAIL'} ({sum(results)}/{len(results)})")
 sys.exit(0 if all(results) else 1)

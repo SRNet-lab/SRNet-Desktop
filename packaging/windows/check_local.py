@@ -1,4 +1,4 @@
-"""Smoke of the WINDOWS-SMOKE checklist against the installed client, on loopback only:
+"""Local install checks against the installed client, on loopback only:
 local test host -> srnet snapps -> join room by srnet:// link -> post -> mail to self ->
 encrypted upload + open -> srnet ui serves Exits and Wallet. No chain transactions.
 Runs on Windows (CI) and Linux/macOS (installed launcher)."""
@@ -15,7 +15,7 @@ else:
     srnet = [str(Path.home() / ".local" / "bin" / "srnet")]
     py = str(base / "venv" / "bin" / "python")
 snapps = base / "app" / "snapps"
-home = Path(tempfile.mkdtemp(prefix="srnet-smoke-"))
+home = Path(tempfile.mkdtemp(prefix="srnet-check-"))
 env = dict(os.environ, SRNET_HOME=str(home))
 procs = []
 
@@ -86,30 +86,30 @@ try:
     assert api("join", {"link": links["room_link"]})["joined"]
     assert api("join", {"link": links["files_link"]})["joined"]
     print("PASS join lobby + files", flush=True)
-    d = api("draft", {"c": "lobby", "t": "room.msg", "body": {"text": "hello from the smoke test", "reply_to": None}})
+    d = api("draft", {"c": "lobby", "t": "room.msg", "body": {"text": "hello from the local check", "reply_to": None}})
     assert api("confirm", {"token": d["token"]}).get("ok"), d
     v = api("view/lobby")
-    assert any(i["body"].get("text") == "hello from the smoke test" for i in v["view"].get("items", v["view"].get("msgs", []))) \
-        or "hello from the smoke test" in json.dumps(v), v
+    assert any(i["body"].get("text") == "hello from the local check" for i in v["view"].get("items", v["view"].get("msgs", []))) \
+        or "hello from the local check" in json.dumps(v), v
     print("PASS post in lobby", flush=True)
     api("mail/register", {})
     me = api("mail/summary", {})["link"]
-    s = api("mail/send", {"to": me, "subject": "smoke", "body": "note to self"})
+    s = api("mail/send", {"to": me, "subject": "check", "body": "note to self"})
     assert s.get("ok"), s
     f = api("mail/fetch", {})
     assert f["new"] == 1, f
     req = api("mail/folder", {"folder": "requests"})["msgs"]
-    assert [m["subject"] for m in req] == ["smoke"], req
+    assert [m["subject"] for m in req] == ["check"], req
     print("PASS mail to self (lands in Requests)", flush=True)
-    secret = b"smoke test file\n" * 40
-    up = api("upload?c=files&name=smoke.txt&mime=text/plain&note=smoke&mode=gated", raw=secret)
+    secret = b"local check file\n" * 40
+    up = api("upload?c=files&name=check.txt&mime=text/plain&note=check&mode=gated", raw=secret)
     assert api("confirm", {"token": up["token"]}).get("ok"), up
     api("sync", {"c": "files"})
     items = api("view/files")["view"]["items"]
-    fid = next(i["id"] for i in items if i.get("note") == "smoke")
+    fid = next(i["id"] for i in items if i.get("note") == "check")
     assert api("file/open", {"c": "files", "id": fid}) == secret
     print("PASS encrypted upload + open", flush=True)
-    # the smoke's `srnet snapps` (now an alias of ui) already serves 48920: ui must reuse it, not start a second core
+    # the earlier `srnet snapps` (now an alias of ui) already serves 48920: ui must reuse it, not start a second core
     ui = start(srnet + ["--home", str(home), "ui", "--no-browser"])
     url = wait_line(ui, "http://127.0.0.1:").split("srnet ui: ", 1)[1].split()[0]
     page = None
@@ -127,6 +127,6 @@ try:
     ts = json.loads(urllib.request.urlopen(urllib.request.Request(url + "api/wallet/topup/status", data=b"{}", headers=hdr), timeout=10).read())
     assert ts.get("ok") is True, ts
     print("PASS srnet ui: one app, native Exits + Wallet tabs, wallet bridge answers", flush=True)
-    print("SMOKE OK")
+    print("LOCAL CHECKS OK")
 finally:
     stop_all()
