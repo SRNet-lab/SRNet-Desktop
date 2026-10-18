@@ -23,6 +23,9 @@ One app for SRNet: typed SNApps, the exit marketplace, and your SRNet balance.
 SRNet is beta software. Payments go through the SRNetBalance contract on Arbitrum One, which
 holds real USDC and has not been audited. Start with small amounts.
 
+SRNet is an independent project. It is not affiliated with or endorsed by the Session Foundation
+or the Session Technology Foundation.
+
 Guide: [Typed SNApps: an illustrated walkthrough](docs/Typed-SNApps-Walkthrough.pdf) (PDF), a
 screen-by-screen tour of the client.
 
