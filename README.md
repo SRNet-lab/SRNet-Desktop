@@ -23,6 +23,9 @@ One app for SRNet: typed SNApps, the exit marketplace, and your SRNet balance.
 SRNet is beta software. Payments go through the SRNetBalance contract on Arbitrum One, which
 holds real USDC and has not been audited. Start with small amounts.
 
+Guide: [Typed SNApps: an illustrated walkthrough](docs/Typed-SNApps-Walkthrough.pdf) (PDF), a
+screen-by-screen tour of the client.
+
 ## Mail
 
 Your mail address is your SRNet identity key plus the 1 to 3 mail hosts you pick, shared as a
