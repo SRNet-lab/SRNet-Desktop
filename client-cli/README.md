@@ -39,14 +39,14 @@ srnet key show
 
 The keystore is `$SRNET_HOME/keystore.json` (V3, scrypt; `--keystore` to override). The
 passphrase is prompted, or read from `SRNET_KEYSTORE_PASSWORD` for `renew --loop` run
-unattended. `--private-key` / `SRNET_PRIVATE_KEY` still work, in plaintext, with a warning.
+unattended. `--private-key` / `SRNET_PRIVATE_KEY` also work, in plaintext, with a warning.
 `srnet doctor` shows which one is in use. Back up the keystore file and passphrase: there is
 no recovery.
 
 ## Funding and paying (no ETH needed)
 
 1. Relayer: the client uses the SRNet demo relayer (`chain.DEFAULT_RELAYER`, on a `.sesh` name,
-   so Session Router must be up) for the live contract. To use another, set it in the Wallet tab
+   so Session Router must be up). To use another, set it in the Wallet tab
    in `srnet ui`, `"relayer": "<url>"` in `config.json`, or `SRNET_RELAYER`; `"off"` disables it.
 2. Top up: `srnet topup --amount 10` (or Wallet / Top up) shows a QR code and the plain address
    of **your own** SRNet wallet. Scan it with a phone wallet, or send USDC on Arbitrum One from
@@ -197,7 +197,7 @@ it (safe to repeat). Sellers need the current seller pack (`watcher --claim-list
   `buy` and `connect` refuse them before anything is paid or mapped, unless you pass
   `--system-dns`, which leaves your DNS alone (it then goes out your normal connection).
   `connect` also refuses without systemd-resolved, unless `--system-dns`.
-- Default chain is Arbitrum One with the live contract. Testnets are opt-in
+- Default chain is Arbitrum One with the SRNetBalance contract. Testnets are opt-in
   via `--rpc`; other chain ids are refused.
 
 ## vendor/

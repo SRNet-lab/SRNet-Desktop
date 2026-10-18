@@ -20,6 +20,9 @@ One app for SRNet: typed SNApps, the exit marketplace, and your SRNet balance.
 - **Private files.** File drops are encrypted on your computer before upload. Share with chosen
   people, with anyone who has the link, or publish unencrypted if you choose.
 
+SRNet is beta software. Payments go through the SRNetBalance contract on Arbitrum One, which
+holds real USDC and has not been audited. Start with small amounts.
+
 ## Mail
 
 Your mail address is your SRNet identity key plus the 1 to 3 mail hosts you pick, shared as a
@@ -53,11 +56,14 @@ srnet mail name 'srnet://room/...' "Bob's room"              # local petname for
 
 Wire format and host API: [`snapps/docs/MAIL.md`](snapps/docs/MAIL.md).
 
-## Install (Ubuntu 24.04)
+## Install
 
-Linux is the supported platform for this release; it is tested on a fresh Ubuntu 24.04 desktop
-(amd64). We recommend a dedicated machine or drive for SRNet. Run the blocks below in a terminal,
+These steps are for a fresh Ubuntu 24.04 desktop (amd64), the supported platform for this
+release. We recommend a dedicated machine or drive for SRNet. Run the blocks below in a terminal,
 top to bottom. Each block starts in your home folder.
+
+macOS works for SNApps, mail, files and the wallet; routing traffic through an exit
+(`srnet connect`) uses nftables and is Linux-only. Windows is not supported in this release.
 
 ### 1. Session Router
 
@@ -185,9 +191,6 @@ sudo systemctl start session-router-client     # start it yourself
 sudo systemctl stop session-router-client      # stop it
 ```
 
-macOS works for SNApps, mail, files and the wallet; routing traffic through an exit
-(`srnet connect`) uses nftables and is Linux-only. Windows is not supported in this release.
-
 ## The app
 
 `srnet ui` (or plain `srnet`; `srnet snapps` is an alias) is the one app. It opens SNApps on Home
@@ -201,8 +204,7 @@ on `127.0.0.1:48920`, with three ribbon tabs in the same window and style:
   any USDC waiting in your wallet to be deposited.
 
 The wallet backend runs inside the same process on a token-protected loopback port; the shell
-reaches it only through the core's API. The old standalone wallet page is retired
-(`srnet ui --legacy-page` keeps it for now).
+reaches it only through the core's API.
 
 `srnet doctor` (and Check my setup) runs a read-only preflight: ports, the Session Router API on
 `127.0.0.1:1190`, `.sesh` DNS, a demo reachability probe, clock, disk and VPN/firewall, then your
@@ -302,10 +304,6 @@ its URL in the Wallet tab (or put `"relayer": "<url>"` in `~/.srnet/config.json`
 [client-cli/README.md](client-cli/README.md)). With `"relayer": "off"`, payments are sent from your
 own wallet instead, which needs a little ETH on Arbitrum One for gas.
 
-## License
-
-Apache-2.0 for the exits client and contract, MIT for the SNApps client. See [LICENSE](LICENSE).
-
 ## Joining collections
 
 The SNApps client starts with Home, Exits and Wallet in the ribbon. Everything else is something you joined:
@@ -317,7 +315,7 @@ The SNApps client starts with Home, Exits and Wallet in the ribbon. Everything e
 - **Sidebar**: joined collections grouped by host, with unread counts. Rename, mute, pin, share and leave from the `⋯`
   menu. State lives in the client's `prefs.json`; no restart or config edit needed.
 - **Trust on first use**: the root key is pinned the first time you join. If a host later presents a different root
-  key, sync and posting stop and the collection shows ⚠. Re-trust is explicit (type "trust the new key") and wipes
+  key, sync and posting stop and the collection shows a warning. Re-trust is explicit (type "trust the new key") and wipes
   that collection's cache.
 - **Share** makes an invite link carrying the pinned root key, so the receiver verifies the same key.
 - **Directories** (`directory` type): hosts list their own collection by signing a `directory.entry` with that
@@ -325,4 +323,14 @@ The SNApps client starts with Home, Exits and Wallet in the ribbon. Everything e
 - **Link handler**: `srnet open <link>` opens the join sheet in the running client. `install.sh` registers it for
   `srnet://` on Linux (xdg). macOS needs an app bundle to own a URL scheme,
   so there run `srnet open '<link>'` by hand.
-- Collections from an existing `client.json` still load, as pre-joined and trusted with their configured pin.
+
+## Related repositories
+
+- [Session-Router-SRNet](https://github.com/SRNet-lab/Session-Router-SRNet): the Session Router
+  build used in the install steps above, with exit mapping added.
+- [SRNet-VPSHost-ExitPack](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack): run your own
+  paid exit on an Ubuntu server and list it on the exit board.
+
+## License
+
+Apache-2.0 for the exits client and contract, MIT for the SNApps client. See [LICENSE](LICENSE).

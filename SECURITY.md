@@ -21,8 +21,8 @@ The contract owner has no power over user balances. These are fixed at deploy: `
 refunded.
 
 Exit admission, the seller installer and its firewall are covered in
-[SRNet-VPSHost-ExitPack](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack)'s
-SECURITY.md.
+[SRNet-VPSHost-ExitPack](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack)
+(see its README and QUICKSTART.md).
 
 ## Known limitations
 
@@ -52,4 +52,4 @@ SECURITY.md.
   request; the user can switch relayers or fall back to direct transactions.
 - The exit marketplace is Beta / Untested.
 - The buyer key is stored in an encrypted V3 keystore by default. Plaintext
-  keys via flag or env still work and print a warning.
+  keys via flag or env also work and print a warning.
