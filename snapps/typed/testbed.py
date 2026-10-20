@@ -38,7 +38,7 @@ def static_server(directory):
     return srv, f"http://127.0.0.1:{srv.server_address[1]}"
 
 
-def start(tmp=None, admins=(), sellers=(), mirror=True, hub_override=None):
+def start(tmp=None, admins=(), sellers=(), mirror=True, hub_override=None, extra_shops=()):
     tmp = Path(tmp or tempfile.mkdtemp(prefix="typed-"))
     env = {"tmp": tmp, "servers": []}
     # board (message board v1 codec) + mirror
@@ -63,11 +63,11 @@ def start(tmp=None, admins=(), sellers=(), mirror=True, hub_override=None):
         low.setdefault(k, {}).update(v)
     hub = Hub(str(tmp / "hub"), hroot, hhk,
               [("room", "lobby"), ("wiki", "wiki"), ("shop", "store"), ("drop", "files"),
-               ("id", "people")], {"admins": list(admins), "sellers": list(sellers)},
+               ("id", "people")] + [("shop", n) for n in extra_shops], {"admins": list(admins), "sellers": list(sellers)},
               pol_override=low)
     hs = serve(hub)
     env["servers"].append(hs)
-    env.update(hub=hub, hub_url=url_of(hs), hub_pin=F.pub_hex(hroot), hub_host_key=hhk)
+    env.update(hub=hub, hub_url=url_of(hs), hub_pin=F.pub_hex(hroot), hub_host_key=hhk, extra_shops=list(extra_shops))
     # card + html site
     site = tmp / "site"
     site.mkdir()
@@ -83,8 +83,8 @@ def client_config(env):
     hub = env["hub_url"]
     cols = [{"name": "board", "kind": "board", "root_pin": env["board_pin"],
              "hosts": env["board_hosts"]}]
-    for name, kind in (("lobby", "room"), ("wiki", "wiki"), ("store", "shop"), ("files", "drop"),
-                       ("people", "id")):
+    for name, kind in [("lobby", "room"), ("wiki", "wiki"), ("store", "shop"), ("files", "drop"),
+                       ("people", "id")] + [(n, "shop") for n in env.get("extra_shops", [])]:
         cols.append({"name": name, "kind": kind, "root_pin": env["hub_pin"],
                      "hosts": [f"{hub}/c/{name}"]})
     cols.append({"name": "rooms-card", "kind": "card", "path": env["card_path"]})

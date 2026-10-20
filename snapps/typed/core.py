@@ -51,6 +51,8 @@ TEMPLATES = HERE / "templates"
 ADDON_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 ADDON_CALL_RE = re.compile(r"^[a-z][a-z0-9/_-]{0,63}$")
 ADDON_GET_RE = re.compile(r"^(tab\.js|tab\.css|qr\.svg\?q=[0-9a-f]{16})$")
+PENDING_PAY_S = 7 * 86400   # an open payment sheet is remembered this long (on disk, across restarts)
+PENDING_PAY_MAX = 200
 
 
 def addons_from_env():
@@ -177,7 +179,16 @@ class Core:
         self._load_joined(config.get("collections", []))
         self.sites = config.get("html_sites", {})
         self.drafts = {}
-        self.config, self.pending_pay = config, {}
+        self.config = config
+        # Payment sheets the buyer opened, kept on disk so "I paid" still knows the order's exact
+        # amount after the app restarts.
+        self.pending_p = self.dir / "pending_pay.json"
+        try:
+            self.pending_pay = json.loads(self.pending_p.read_text())
+            if not isinstance(self.pending_pay, dict):
+                self.pending_pay = {}
+        except (OSError, ValueError):
+            self.pending_pay = {}
         self.blob_cache = self.dir / "blobs"
         self.blob_cache.mkdir(exist_ok=True)
         # mail: same identity as posting (author.key); sealed store under <data>/mail
@@ -622,15 +633,25 @@ class Core:
             uri, amount, token = PI.eth_link(cid, to, PI.eth_wei(l["price"])), l["price"], None
         tok = secrets.token_hex(12)
         with self.lock:
-            self.pending_pay = {k: v for k, v in self.pending_pay.items() if self.clock() - v["at"] < 3600}
-            self.pending_pay[tok] = {"collection": name, "listing": l["id"], "chain_id": cid, "uri": uri,
-                                     "amount": amount if l["currency"] == "USDC" else None, "at": self.clock()}
+            keep = {k: v for k, v in self.pending_pay.items() if self.clock() - v.get("at", 0) < PENDING_PAY_S}
+            keep = dict(sorted(keep.items(), key=lambda kv: kv[1].get("at", 0))[-(PENDING_PAY_MAX - 1):])
+            keep[tok] = {"collection": name, "listing": l["id"], "chain_id": cid, "uri": uri,
+                         "amount": amount if l["currency"] == "USDC" else None, "at": self.clock()}
+            self.pending_pay = keep
+            self._save_pending()
         return {"ok": True, "token": tok, "qr": PI.have_qr(), "sheet": {
             "network": PI.label(cid), "chain_id": cid, "to": to, "amount": amount, "currency": l["currency"],
             "token_address": token, "uri": uri, "item": l["title"], "seller": l["seller_label"],
             "listing": l["id"], "testnet": cid in PI.TESTNETS,
             "note": "Pay from your own wallet: send exactly this amount on " + PI.label(cid)
                     + ". You pay the network fee. Payments are final. This app never sends funds."}}
+
+    def _save_pending(self):
+        tmp = self.pending_p.with_suffix(f".{threading.get_ident()}.tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps(self.pending_pay))
+        os.replace(tmp, self.pending_p)
 
     def pay_qr(self, tok):
         d = self.pending_pay.get(tok)
@@ -664,6 +685,17 @@ class Core:
             for o in l["orders"]:
                 if o["id"] != order_id:
                     continue
+                # orders in every store this app has that is paid to the same address can name it
+                pool = [x for ll in listings for x in ll["orders"]]
+                for other in self.colls.values():
+                    if other is c or other.kind != "shop":
+                        continue
+                    try:
+                        for ll in views.shop_view(self._items(other)[0], other.policy or {})["listings"]:
+                            if str(ll.get("pay_to") or "").lower() == str(l.get("pay_to") or "").lower():
+                                pool.extend(ll["orders"])
+                    except Exception:  # noqa: BLE001  (a broken other store doesn't block this check)
+                        continue
                 if "tx" not in o:
                     return {"ok": True, "checked": False, "note": "an old SRNet-balance order; it can't be checked here"}
                 link = PI.tx_link(o["chain_id"], o["tx"])
@@ -671,7 +703,7 @@ class Core:
                     return {"ok": True, "checked": True, "paid": False, "link": link,
                             "why": f"this order names {PI.label(o['chain_id'])}, but the listing takes payment on "
                                    f"{PI.label(l.get('chain_id'))}"}
-                same = sorted((x for ll in listings for x in ll["orders"]
+                same = sorted((x for x in pool
                                if x.get("tx", "").lower() == o["tx"].lower() and x.get("chain_id") == o["chain_id"]
                                and x["id"] != o["id"]), key=lambda x: (x["ts"], x["id"]))
                 if same:

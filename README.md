@@ -259,8 +259,9 @@ owners can check a payment with `srnet verify` (exits add-on) or in the block ex
 Each order gets its own exact USDC amount: the price plus a few millionths of a USDC (under one
 cent). The order names that amount and the transaction. When the seller checks an order, it only
 counts if the transaction pays exactly that amount on the listing's network, and no other order
-names the same transaction. If two orders name one transaction, both are shown as in dispute so
-the seller can ask the buyers.
+(in any of your stores paid to the same address) names the same transaction. If two orders name
+one transaction, both are shown as in dispute so the seller can ask the buyers. An open payment
+sheet is remembered for a week, so "I paid" still knows the exact amount after a restart.
 
 - One payment is limited to 20 USDC by default (`"payments": {"max_usdc": "40"}` in
   `client.json` changes it).

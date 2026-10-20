@@ -23,7 +23,7 @@ class ShopPay(unittest.TestCase):
         seller_seed = b"s" * 32
         cls.seller_pub = F.pub_hex(F.key_from_seed(seller_seed))
         cls.env = T.start(mirror=False, sellers=[cls.seller_pub],
-                          hub_override={"shop": {"new_key_rate": [[50, 3600]]}})
+                          hub_override={"shop": {"new_key_rate": [[50, 3600]]}}, extra_shops=("store2",))
         cls.cfg = T.client_config(cls.env)
         d = cls.env["tmp"] / "pay"
         (d / "seller").mkdir(parents=True)
@@ -171,6 +171,42 @@ class ShopPay(unittest.TestCase):
         self.assertIn("already named by order " + orders[0]["id"], second["why"])
         self.assertFalse(first["paid"])              # in dispute: the seller asks both buyers
         self.assertIn("also named by order", first["why"])
+
+    def test_same_tx_named_in_another_store_paid_to_the_same_address(self):
+        _, l1 = self.listing("Mug")
+        r = self.seller.draft("store2", "shop.listing", {"title": "Mug too", "desc": "", "price": "2.5",
+                                                          "currency": "USDC", "chain_id": 8453, "pay_to": PAY_TO}, [])
+        self.assertTrue(r["result"]["ok"], r)
+        self.buyer.sync("store2")
+        l2 = next(x for x in self.buyer.view("store2")["view"]["listings"] if x["title"] == "Mug too")
+        tx = "0x" + "a7" * 32
+        a = self.buyer.pay_draft("store", l1["id"])
+        self.buyer.pay_order(a["token"], tx)
+        thief = Core(str(self.env["tmp"] / "pay" / "thief2"), self.cfg, autoconfirm=True)
+        thief.sync()
+        b = thief.pay_draft("store2", l2["id"])
+        thief.pay_order(b["token"], tx)
+        self.seller.sync()
+        o2 = next(x for x in self.seller.view("store2")["view"]["listings"] if x["id"] == l2["id"])["orders"][0]
+        self.seller.addons = {"exits": {"title": "Exits", "base": "http://127.0.0.1:9", "tok": "t" * 20, "slow": set()}}
+        try:
+            v = self.seller.verify_order("store2", o2["id"])
+        finally:
+            self.seller.addons = {}
+        self.assertFalse(v["paid"])
+        self.assertIn("named by order", v["why"])
+
+    def test_payment_sheet_survives_an_app_restart(self):
+        _, l = self.listing("Cap")
+        d = self.buyer.pay_draft("store", l["id"])
+        again = Core(str(self.env["tmp"] / "pay" / "buyer"), self.cfg, autoconfirm=True)
+        r = again.pay_order(d["token"], "0x" + "b8" * 32)["result"]
+        self.assertTrue(r["ok"], r)
+        again.sync("store")
+        mine = [o for x in again.view("store")["view"]["listings"] if x["id"] == l["id"] for o in x["orders"]]
+        self.assertEqual(mine[0].get("amount"), d["sheet"]["amount"])
+        p = self.env["tmp"] / "pay" / "buyer" / "pending_pay.json"
+        self.assertEqual(p.stat().st_mode & 0o777, 0o600)
 
     def test_order_on_another_chain_or_amount_is_not_paid(self):
         items = [{"t": "shop.listing", "author": "aa" * 32, "id": "x1", "ts": 1, "refs": [],
