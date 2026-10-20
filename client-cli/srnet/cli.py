@@ -27,6 +27,43 @@ def _addon_missing(args, st: state.State) -> int:
     return 2
 
 
+# Commands of the old client (wallet, SRNet balance, relayer) that are gone.
+REMOVED_COMMANDS = ("key", "topup", "pay", "cashout", "renew", "vendor", "wallet")
+REMOVED_NOTE = ("gone: SRNet has no wallet or balance any more; payments go straight from your own wallet. "
+                "Old balances: contrib/legacy-cashout in SRNet-VPSHost-ExitPack")
+
+
+def _removed(args, st: state.State) -> int:
+    print(f"srnet {args.cmd}: {REMOVED_NOTE}", file=sys.stderr)
+    return 2
+
+
+def _register_addon(sub, name: str, a, cmds: dict) -> None:
+    """Let one add-on add its commands. It can't take a name that's already there, and if its
+    register() fails half way, whatever it added is taken out again so the core still works."""
+    before, before_help = dict(sub.choices), list(sub._choices_actions)
+    real = sub.add_parser
+
+    def guarded(cmd, **kw):
+        if cmd in sub.choices:
+            raise ValueError(f"command {cmd!r} is already taken")
+        return real(cmd, **kw)
+    sub.add_parser = guarded
+    try:
+        got = dict(a.register(sub) or {})
+    except Exception as e:
+        sub.choices.clear()
+        sub.choices.update(before)
+        sub._choices_actions[:] = before_help
+        print(f"note: add-on {name} commands not available: {str(e)[:200]}", file=sys.stderr)
+        return
+    finally:
+        del sub.add_parser
+    for c, fn in got.items():
+        if c not in cmds and c in sub.choices and c not in before:
+            cmds[c] = fn
+
+
 def cmd_doctor(args, st: state.State) -> int:
     """Setup preflight (router, DNS, demo, clock...), then checks from installed add-ons.
     Exit 0 if nothing failed."""
@@ -215,21 +252,23 @@ def main(argv=None) -> int:
 
     cmds = {"doctor": cmd_doctor, "ui": cmd_ui, "snapps": cmd_ui, None: cmd_ui, "open": cmd_open, "mail": cmd_mail}
     for name, a in sorted(addons.load().items()):
-        try:
-            for c, fn in a.register(sub).items():
-                cmds.setdefault(c, fn)
-        except Exception as e:
-            print(f"note: add-on {name} commands not available: {e}", file=sys.stderr)
-    for c in addons.EXITS_COMMANDS:
-        if c not in cmds:  # one-line install hint instead of "invalid choice"
-            sub.add_parser(c, help="exits add-on (not installed)", add_help=False).add_argument(
-                "rest", nargs=argparse.REMAINDER)
-            cmds[c] = _addon_missing
+        _register_addon(sub, name, a, cmds)
+    stubs = [(c, "exits add-on (not installed)", _addon_missing) for c in addons.EXITS_COMMANDS]
+    stubs += [(c, None, _removed) for c in REMOVED_COMMANDS]  # not listed in --help
+    for c, what, fn in stubs:
+        if c in cmds or c in sub.choices:
+            continue
+        try:  # a one-line note instead of "invalid choice"
+            kw = {} if what is None else {"help": what}
+            sub.add_parser(c, add_help=False, **kw).add_argument("rest", nargs=argparse.REMAINDER)
+            cmds[c] = fn
+        except Exception:
+            continue
 
     args, extra = ap.parse_known_args(argv)
     if args.cmd == "mail":
         args.rest = extra + args.rest
-    elif extra and cmds.get(args.cmd) is not _addon_missing:
+    elif extra and cmds.get(args.cmd) not in (_addon_missing, _removed):
         ap.error("unrecognized arguments: " + " ".join(extra))
     st = state.State(Path(args.home) if args.home else None)
     try:

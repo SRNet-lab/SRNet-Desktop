@@ -126,9 +126,60 @@ class Loading(unittest.TestCase):
         j = json.loads(addons.ui_env({"exits": FAKE}, None))
         self.assertEqual(j, [{"name": "exits", "title": "Exits", "url": "http://127.0.0.1:1/#tok", "slow": ["connect"]}])
 
+    def test_broken_register_does_not_break_the_core(self):
+        """register() adds a parser and then fails: its commands go, everything else still works."""
+        for mod in ("half_srnet_addon", "core_name_srnet_addon"):
+            rc, out, err = run(["--help"], {"SRNET_ADDON_MODULES": f"{mod}:ADDON"})
+            self.assertEqual(rc, 0, err)
+            self.assertEqual(err.count("commands not available"), 1, err)   # one note, once
+            self.assertIn("doctor", out)
+            rc, out, err = run(["--home", tempfile.mkdtemp(), "exits"], {"SRNET_ADDON_MODULES": f"{mod}:ADDON"})
+            self.assertEqual(rc, 2, err)                                     # the install hint again
+            self.assertIn("Exits are an add-on", err)
+            rc, out, err = run(["open", "--print-only", "srnet://room/x"], {"SRNET_ADDON_MODULES": f"{mod}:ADDON"})
+            self.assertNotIn("Traceback", err)
+            self.assertNotIn("conflicting", err)
+
     def tearDown(self):
         with mock.patch.dict(os.environ, {"SRNET_NO_ADDONS": "1"}):
             addons.load(refresh=True)
+
+
+class HalfAddon:
+    name, title, version = "half", "Half", "0"
+
+    def register(self, sub):
+        sub.add_parser("exits", help="half done")
+        raise RuntimeError("boom")
+
+
+class CoreNameAddon:
+    name, title, version = "takeover", "Takeover", "0"
+
+    def register(self, sub):
+        sub.add_parser("connect", help="fine")
+        sub.add_parser("doctor", help="mine now")
+        return {"doctor": lambda a, s: 0, "connect": lambda a, s: 0}
+
+
+sys.modules["half_srnet_addon"] = types.SimpleNamespace(ADDON=HalfAddon())
+sys.modules["core_name_srnet_addon"] = types.SimpleNamespace(ADDON=CoreNameAddon())
+
+
+class Removed(unittest.TestCase):
+    def test_old_commands_say_they_are_gone(self):
+        from srnet.cli import REMOVED_COMMANDS
+        for cmd in REMOVED_COMMANDS:
+            rc, out, err = run(["--home", tempfile.mkdtemp(), cmd, "anything"])
+            self.assertEqual(rc, 2, cmd)
+            self.assertIn("gone", err)
+            self.assertIn("contrib/legacy-cashout", err)
+            self.assertNotIn("invalid choice", err)
+        rc, out, err = run(["--help"])
+        self.assertNotIn("topup", out)
+
+    def test_hint_names_the_installer_first(self):
+        self.assertLess(addons.EXITS_HINT.index("./install.sh --with-exits"), addons.EXITS_HINT.index("pip install"))
 
 
 if __name__ == "__main__":
