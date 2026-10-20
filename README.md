@@ -3,6 +3,13 @@
 One app for SRNet: chat rooms, boards, wikis, mail, private files and other SNApps, over
 Session Router.
 
+**What's new**
+
+- No developer fee anywhere in SRNet.
+- Simpler payments: you pay the seller straight from your own wallet. No balance to top up, no
+  contract and no escrow.
+- Exits are a separate add-on in their own repository, and this client works without them.
+
 - **SNApps.** Boards, chat rooms, wikis, storefronts, file drops, profiles and plain-HTML
   `.sesh` pages. Hosts serve only signed data; the client ships the interface. Every record is
   signature-checked, every template runs in a sandbox with no network access, and HTML pages
@@ -18,7 +25,8 @@ Session Router.
 - **Exits (add-on).** Buying time on an SRNet exit and sending your traffic through it is a
   separate add-on, `srnet-exits`, from
   [SRNet-VPSHost-ExitPack](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack). Install it with
-  `./install.sh --with-exits`. Without it, this client has no wallet and no payment code.
+  `./install.sh --with-exits`. Without it, this client has no wallet and no payment code. The
+  add-on also runs on its own as `srnet-exits`, without this client.
 
 SRNet is beta software.
 
@@ -53,7 +61,7 @@ srnet mail name 'srnet://room/...' "Bob's room"              # local petname for
   to your inbox on every host without telling the host who they are.
 - **Attach** a file in the Mail page and it is encrypted on your computer and stored on a file
   drop you've joined (no public listing). Only the key-in-link goes inside the sealed message,
-  so only your recipients can open it. The size limit is set by the file drop host (25 MiB by default). You can also paste file-drop links.
+  so only your recipients can open it. The size limit is set by the Storage Seller running that file drop (25 MiB by default). You can also paste file-drop links.
 - Petnames are local only. Links can suggest a name; your own name always wins.
 
 Wire format and host API: [`snapps/docs/MAIL.md`](snapps/docs/MAIL.md).
@@ -237,13 +245,14 @@ Details: [client-cli/README.md](client-cli/README.md).
 
 ## Files
 
+File drops are hosted by Storage Sellers: people who run a file drop on their own server.
 Uploads are encrypted by default (ChaCha20-Poly1305, a new random key per file, sizes padded to
-buckets, name and type sealed inside). With encryption on, the host stores only ciphertext.
-Choose per file:
+buckets, name and type sealed inside). With encryption on, the Storage Seller stores only
+ciphertext. Choose per file:
 
 - **Only me and people I choose** (default): the file key is sealed to each person's key from
   their SRNet profile. Add people later, or approve someone's access request.
-- **Anyone with the link**: the key rides in the link after `#`, so the host never sees it.
+- **Anyone with the link**: the key rides in the link after `#`, so the Storage Seller never sees it.
 - **Not encrypted**: for content meant to be public and indexable.
 
 ![A file drop in the SRNet client with three files: a public readme, meeting notes shared with invited people only, and trip photos shared with anyone who has the link](docs/images/storage.png)
@@ -251,15 +260,15 @@ Choose per file:
 Revoking someone stops them getting future versions. It can't take back a copy they already
 downloaded.
 
-Each file drop host sets its own largest file size (25 MiB by default) and may set a storage
-quota per uploader. The client reads the limit from the host's signed policy and refuses a
+Each Storage Seller sets its own largest file size (25 MiB by default) and may set a storage
+quota per uploader. The client reads the limit from the file drop's signed policy and refuses a
 larger file before uploading anything. Big files go up in 1 MiB chunks. If an upload is
 interrupted, uploading the same file again continues where it stopped.
 
-**Coming soon:** file drop hosts will be able to turn off public hosting, so they hold only
+**Coming soon:** Storage Sellers will be able to turn off public hosting, so they hold only
 encrypted files they can't read. The client will also let you move or copy all your files from
-one host to another, and keep them synced across several hosts so they stay available if one
-goes down.
+one Storage Seller to another, and keep them synced across several Storage Sellers so they stay
+available if one goes down.
 
 ## Moderation, room headers and pins
 
@@ -332,6 +341,8 @@ The SNApps client starts with Home in the ribbon (plus a tab for each installed 
 - [SRNet-VPSHost-ExitPack](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack): the exits
   add-on for this client, and the pack for running your own paid exit and listing it on the
   exit board.
+- [SRNet-TypedSNApp-HostPack](https://github.com/SRNet-lab/SRNet-TypedSNApp-HostPack): run your
+  own host for boards, stores, wikis, chat rooms, file drops, profiles, directories or mail.
 
 ## License
 
