@@ -256,14 +256,17 @@ Shop items carry a price in USDC (Arbitrum One or Base) or ETH, and the seller's
 money. Then **I paid: tell the seller** sends the seller an order with the transaction hash. Shop
 owners can check a payment with `srnet verify` (exits add-on) or in the block explorer.
 
-Each order gets its own exact USDC amount: the price plus a few millionths of a USDC (under one
-cent). The order names that amount and the transaction. When the seller checks an order, it only
-counts if the transaction pays exactly that amount on the listing's network, and no other order
-(in any of your stores paid to the same address) names the same transaction. If two orders name
-one transaction, both are shown as in dispute so the seller can ask the buyers. An open payment
-sheet is remembered for a week, so "I paid" still knows the exact amount after a restart.
-Pressing **Pay** again on the same item in that week (after closing the sheet or reloading the
-page) opens the same sheet with the same amount, unless the price or address has changed.
+Each order gets its own exact USDC amount: the price plus a random few millionths of a USDC
+(under one cent). The app never picks one of its own amounts from the past week again. The
+amount is random, not unique: two buyers can rarely land on the same one, which is fine because
+an order is matched by its transaction. The order names that amount and the transaction. When
+the seller checks an order, it only counts if the transaction pays exactly that amount on the
+listing's network, and no other order (in any of your stores paid to the same address) names the
+same transaction. If two orders name one transaction, both are shown as in dispute so the seller
+can ask the buyers. An open payment sheet is remembered for a week, so "I paid" still knows the
+exact amount after a restart. Pressing **Pay** again on the same item in that week (after
+closing the sheet or reloading the page) opens the same sheet with the same amount, unless the
+price or address has changed.
 
 - One payment is limited to 20 USDC by default (`"payments": {"max_usdc": "40"}` in
   `client.json` changes it).

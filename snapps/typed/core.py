@@ -633,7 +633,15 @@ class Core:
                         "press I paid and paste the transaction. Otherwise send exactly this amount on "
                         + PI.label(cid) + ". You pay the network fee. Payments are final. This app never sends funds."}}
         if l["currency"] == "USDC":
-            units = PI.order_units(PI.usdc_units(l["price"]))   # this order's own exact amount
+            with self.lock:   # not one of this app's own amounts from the past week
+                mine = set()
+                for v in self.pending_pay.values():
+                    try:
+                        if v.get("amount") and self.clock() - v.get("at", 0) < PENDING_PAY_S:
+                            mine.add(PI.usdc_units(v["amount"]))
+                    except PI.PayError:
+                        continue
+            units = PI.order_units(PI.usdc_units(l["price"]), exclude=mine)   # this order's own random amount
             cap = PI.max_units(self.config)
             if units > cap:
                 raise F.FormatError(f"{PI.fmt_usdc(units)} USDC is over your limit of {PI.fmt_usdc(cap)} per "

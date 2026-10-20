@@ -50,10 +50,20 @@ def usdc_units(price: str) -> int:
 ORDER_ID_MAX = 9999  # shop payments: price + 1..9999 millionths of a USDC, so each order's amount is its own
 
 
-def order_units(units: int, rng=None) -> int:
-    """The exact amount a buyer sends for one order: the price plus a random few millionths."""
+def order_units(units: int, rng=None, exclude=()) -> int:
+    """The exact amount a buyer sends for one order: the price plus a random few millionths.
+    Amounts in `exclude` (this app's own recent ones) are skipped. It is random, not unique:
+    another buyer can land on the same amount, which is fine because orders are matched by
+    their transaction."""
     import secrets
-    return int(units) + 1 + (rng or secrets.randbelow)(ORDER_ID_MAX)
+    pick = rng or secrets.randbelow
+    exclude = set(exclude)
+    for _ in range(1000):
+        u = int(units) + 1 + pick(ORDER_ID_MAX)
+        if u not in exclude:
+            return u
+    free = [int(units) + 1 + i for i in range(ORDER_ID_MAX) if int(units) + 1 + i not in exclude]
+    return free[pick(len(free))] if free else u
 
 
 def order_amount_ok(price_units: int, paid_units: int) -> bool:

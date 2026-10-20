@@ -250,6 +250,26 @@ class ShopPay(unittest.TestCase):
         later.sync("store")
         self.assertNotEqual(later.pay_draft("store", l["id"])["token"], d["token"])
 
+    def test_new_sheet_avoids_this_apps_recent_amounts(self):
+        from unittest import mock
+        _, l = self.listing("Badge")
+        units = PI.usdc_units(l["price"])
+        seen = []
+        real = PI.order_units
+        def spy(u, rng=None, exclude=()):
+            seen.append(set(exclude))
+            return real(u, rng=lambda n: 41, exclude=exclude)     # always tries the same pick first
+        c = Core(str(self.env["tmp"] / "pay" / "buyer-c"), self.cfg, autoconfirm=True)
+        c.sync()
+        with mock.patch.object(PI, "order_units", spy):
+            a = c.pay_draft("store", l["id"])["sheet"]["amount"]
+            _, l2 = self.listing("Badge 2")                         # same price, another item
+            c.sync("store")
+            b = c.pay_draft("store", l2["id"])["sheet"]["amount"]
+        self.assertEqual(PI.usdc_units(a), units + 42)
+        self.assertNotEqual(a, b)
+        self.assertIn(units + 42, seen[-1])
+
     def test_order_on_another_chain_or_amount_is_not_paid(self):
         items = [{"t": "shop.listing", "author": "aa" * 32, "id": "x1", "ts": 1, "refs": [],
                   "body": {"title": "Cap", "price": "1", "currency": "USDC", "chain_id": 8453, "pay_to": PAY_TO}},
@@ -287,6 +307,12 @@ class PayInfo(unittest.TestCase):
         self.assertTrue(PI.order_amount_ok(1_000_000, 1_000_001))
         self.assertFalse(PI.order_amount_ok(1_000_000, 1_000_000))
         self.assertFalse(PI.order_amount_ok(1_000_000, 1_010_000))
+
+    def test_own_recent_amounts_are_skipped(self):
+        seq = iter([0, 0, 1, 5])
+        self.assertEqual(PI.order_units(1_000_000, rng=lambda n: next(seq), exclude={1_000_001}), 1_000_002)
+        full = {1_000_001 + i for i in range(PI.ORDER_ID_MAX)} - {1_000_777}
+        self.assertEqual(PI.order_units(1_000_000, rng=lambda n: 0, exclude=full), 1_000_777)
 
     def test_amounts(self):
         self.assertEqual(PI.usdc_units("2.5"), 2_500_000)
