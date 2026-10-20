@@ -309,12 +309,15 @@ def shop_listing_error(b: dict) -> str | None:
 
 
 # Buyer's note after paying. v1 (old SRNet-balance lease receipts) stays readable; v2 names the
-# chain and transaction of a direct payment, so the seller can look it up.
+# chain and transaction of a direct payment, and for USDC the exact amount sent (the price plus a
+# few millionths picked for this order), so the seller can look it up and tell orders apart.
 SHOP_ORDER = TypeSpec("shop.order", 1, {"lease_id": integer(1, 2**63),
                                         "buyer": pattern(r"0x[0-9a-fA-F]{40}", what="address"),
                                         "note": text(200, required=False)}, 1)
 SHOP_ORDER2 = TypeSpec("shop.order", 2, {"chain_id": integer(1, 2**31),
                                          "tx": pattern(r"0x[0-9a-fA-F]{64}", what="transaction hash"),
+                                         "amount": pattern(r"(0|[1-9][0-9]{0,8})\.[0-9]{2,6}", required=False,
+                                                           what="amount"),
                                          "note": text(200, required=False)}, 1)
 SHOP_WITHDRAW = TypeSpec("shop.withdraw", 1, {"reason": text(200, required=False)}, 1)
 SHOP_REVIEW = TypeSpec("shop.review", 1, {"rating": integer(1, 5),

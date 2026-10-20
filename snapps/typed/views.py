@@ -7,8 +7,6 @@ from __future__ import annotations
 
 import hashlib
 
-import mbfmt as F
-
 
 def items_from_store(store, codec) -> list[dict]:
     out = []
@@ -180,6 +178,8 @@ def shop_view(items, policy) -> dict:
                 o = {"id": it["id"], "by": label(ids, a), "ts": it["ts"], "note": b.get("note") or ""}
                 if "tx" in b:
                     o.update(chain_id=b["chain_id"], tx=b["tx"])
+                    if b.get("amount"):
+                        o["amount"] = b["amount"]
                 else:  # old SRNet-balance receipt
                     o.update(lease_id=b["lease_id"], buyer=b["buyer"])
                 listings[lid].setdefault("orders", []).append(o)
@@ -291,7 +291,6 @@ def host_rules(host, meta) -> str | None:
         err = shop_listing_error(meta.body)
         if err:
             return err
-        if meta.body.get("currency") == "ETH" and meta.body["chain_id"] not in TESTNET_CHAINS \
-                and not pol.get("allow_mainnet"):
-            return "ETH payments are testnet-only on this store"
+        if meta.body.get("currency") == "ETH" and meta.body["chain_id"] not in TESTNET_CHAINS:
+            return "ETH payments are testnet-only"
     return None

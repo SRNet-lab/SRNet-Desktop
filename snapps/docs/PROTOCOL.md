@@ -93,13 +93,17 @@ are final. The core refuses an amount over the buyer's limit (`"payments": {"max
 default 20).
 
 - `shop.listing@1`: `currency` `USDC` (official USDC on Arbitrum One 42161 or Base 8453) or `ETH`,
-  with `chain_id`, `pay_to` (the seller's address) and `price`. ETH is testnet-only unless the
-  buyer sets `"payments": {"allow_mainnet": true}`. Listings with `currency` `SRNET` (the old
-  SRNet balance) show "seller needs to update" and can't be paid.
-- `shop.order@2`: `{chain_id, tx, note?}`, refs `[listing]`. The buyer's note after paying, with
-  the transaction hash, so the seller can look the payment up. The core doesn't check payments;
-  `srnet verify` in the exits add-on (or a block explorer) does. `shop.order@1` (old receipts)
-  stays readable.
+  with `chain_id`, `pay_to` (the seller's address) and `price`. ETH is testnet-only; hosts refuse
+  ETH listings on other chains. Listings with `currency` `SRNET` (the old SRNet balance) show
+  "seller needs to update" and can't be paid.
+- `shop.order@2`: `{chain_id, tx, amount?, note?}`, refs `[listing]`. The buyer's note after
+  paying, with the transaction hash, so the seller can look the payment up. For USDC the core
+  asks for `price` plus 1..9999 millionths, picked at random for this order, and `amount` records
+  that exact amount. The core doesn't check payments; the exits add-on (or a block explorer)
+  does. When the seller checks an order, it counts only if `chain_id` is the listing's, the
+  transaction pays exactly `amount` (price plus at most 0.009999) to `pay_to`, and no other order
+  names the same `(chain_id, tx)`. Two orders naming one transaction are both shown as in
+  dispute. `shop.order@1` (old receipts) stays readable.
 
 ## Host remove (moderation)
 

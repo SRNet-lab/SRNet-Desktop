@@ -256,9 +256,15 @@ Shop items carry a price in USDC (Arbitrum One or Base) or ETH, and the seller's
 money. Then **I paid: tell the seller** sends the seller an order with the transaction hash. Shop
 owners can check a payment with `srnet verify` (exits add-on) or in the block explorer.
 
+Each order gets its own exact USDC amount: the price plus a few millionths of a USDC (under one
+cent). The order names that amount and the transaction. When the seller checks an order, it only
+counts if the transaction pays exactly that amount on the listing's network, and no other order
+names the same transaction. If two orders name one transaction, both are shown as in dispute so
+the seller can ask the buyers.
+
 - One payment is limited to 20 USDC by default (`"payments": {"max_usdc": "40"}` in
   `client.json` changes it).
-- ETH prices only work on test networks unless you set `"payments": {"allow_mainnet": true}`.
+- ETH prices only work on test networks. Real payments are USDC.
 - Payments are final; there are no refunds through SRNet.
 - Items from shops that still use the old SRNet balance show "seller needs to update".
 

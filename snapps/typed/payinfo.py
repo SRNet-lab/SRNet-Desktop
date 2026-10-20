@@ -47,6 +47,19 @@ def usdc_units(price: str) -> int:
     return v
 
 
+ORDER_ID_MAX = 9999  # shop payments: price + 1..9999 millionths of a USDC, so each order's amount is its own
+
+
+def order_units(units: int, rng=None) -> int:
+    """The exact amount a buyer sends for one order: the price plus a random few millionths."""
+    import secrets
+    return int(units) + 1 + (rng or secrets.randbelow)(ORDER_ID_MAX)
+
+
+def order_amount_ok(price_units: int, paid_units: int) -> bool:
+    return int(price_units) < int(paid_units) <= int(price_units) + ORDER_ID_MAX
+
+
 def fmt_usdc(units: int) -> str:
     s = f"{Decimal(units) / Decimal(1_000_000):f}"
     whole, _, frac = s.partition(".")

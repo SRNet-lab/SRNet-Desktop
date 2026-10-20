@@ -34,7 +34,7 @@ import mbfmt as F
 from . import joins as J
 from . import adapters, filecrypt as FC, htmlview, payinfo as PI, views
 from . import mail as M
-from .record import BOARD, KIND_TYPES, TESTNET_CHAINS, codec_for, make_record
+from .record import KIND_TYPES, TESTNET_CHAINS, codec_for, make_record
 from .registry import RegistryError, TemplateManager
 from . import mail as MAIL
 from .mailclient import MailClient
@@ -610,7 +610,7 @@ class Core:
             raise F.FormatError("this listing can't be paid: " + (l.get("note") or "seller needs to update"))
         cid, to = l["chain_id"], l["pay_to"]
         if l["currency"] == "USDC":
-            units = PI.usdc_units(l["price"])
+            units = PI.order_units(PI.usdc_units(l["price"]))   # this order's own exact amount
             cap = PI.max_units(self.config)
             if units > cap:
                 raise F.FormatError(f"{PI.fmt_usdc(units)} USDC is over your limit of {PI.fmt_usdc(cap)} per "
@@ -624,7 +624,7 @@ class Core:
         with self.lock:
             self.pending_pay = {k: v for k, v in self.pending_pay.items() if self.clock() - v["at"] < 3600}
             self.pending_pay[tok] = {"collection": name, "listing": l["id"], "chain_id": cid, "uri": uri,
-                                     "at": self.clock()}
+                                     "amount": amount if l["currency"] == "USDC" else None, "at": self.clock()}
         return {"ok": True, "token": tok, "qr": PI.have_qr(), "sheet": {
             "network": PI.label(cid), "chain_id": cid, "to": to, "amount": amount, "currency": l["currency"],
             "token_address": token, "uri": uri, "item": l["title"], "seller": l["seller_label"],
@@ -646,30 +646,62 @@ class Core:
         tx = str(tx or "").strip().lower()
         if not PI.TX_RE.match(tx):
             raise F.FormatError("paste the transaction hash (0x followed by 64 hex characters)")
-        return self.draft(d["collection"], "shop.order", {"chain_id": d["chain_id"], "tx": tx,
-                                                          "note": (note or None)}, [d["listing"]])
+        body = {"chain_id": d["chain_id"], "tx": tx, "note": (note or None)}
+        if d.get("amount"):
+            body["amount"] = d["amount"]
+        return self.draft(d["collection"], "shop.order", body, [d["listing"]])
 
     def verify_order(self, name, order_id):
         """Seller: was this order really paid? The core doesn't check payments; the exits add-on can
-        (read-only). Without it, return the explorer link."""
+        (read-only). Without it, return the explorer link.
+
+        Orders are public, so a buyer could copy someone else's transaction hash. An order only
+        counts if it names the listing's chain, the exact amount it sent matches the transaction,
+        and no other order names the same transaction (if one does, both are shown as in dispute)."""
         c = self.colls[name]
-        for l in views.shop_view(self._items(c)[0], c.policy or {})["listings"]:
+        listings = views.shop_view(self._items(c)[0], c.policy or {})["listings"]
+        for l in listings:
             for o in l["orders"]:
                 if o["id"] != order_id:
                     continue
                 if "tx" not in o:
                     return {"ok": True, "checked": False, "note": "an old SRNet-balance order; it can't be checked here"}
                 link = PI.tx_link(o["chain_id"], o["tx"])
+                if o["chain_id"] != l.get("chain_id"):
+                    return {"ok": True, "checked": True, "paid": False, "link": link,
+                            "why": f"this order names {PI.label(o['chain_id'])}, but the listing takes payment on "
+                                   f"{PI.label(l.get('chain_id'))}"}
+                same = sorted((x for ll in listings for x in ll["orders"]
+                               if x.get("tx", "").lower() == o["tx"].lower() and x.get("chain_id") == o["chain_id"]
+                               and x["id"] != o["id"]), key=lambda x: (x["ts"], x["id"]))
+                if same:
+                    first = min([o] + same, key=lambda x: (x["ts"], x["id"]))
+                    why = (f"that transaction is already named by order {first['id']} (earlier)" if first is not o
+                           else "that transaction is also named by order(s) " + ", ".join(x["id"] for x in same)
+                           + "; ask the buyers which of them paid (compare the from address)")
+                    return {"ok": True, "checked": True, "paid": False, "link": link, "why": why}
                 if "exits" in self.addons and l.get("currency") == "USDC":
+                    amount = l["price"]
+                    if o.get("amount"):
+                        try:
+                            ok = PI.order_amount_ok(PI.usdc_units(l["price"]), PI.usdc_units(o["amount"]))
+                        except PI.PayError:
+                            ok = False
+                        if not ok:
+                            return {"ok": True, "checked": True, "paid": False, "link": link,
+                                    "why": f"the order says {o['amount']} USDC, which isn't this listing's price "
+                                           f"{l['price']} plus an order id"}
+                        amount = o["amount"]
                     r = self.addon_call("exits", "verify", json.dumps(
-                        {"chain_id": o["chain_id"], "tx": o["tx"], "to": l["pay_to"], "amount": l["price"]}).encode())
+                        {"chain_id": o["chain_id"], "tx": o["tx"], "to": l["pay_to"], "amount": amount}).encode())
                     try:
                         r = json.loads(r)
                     except ValueError:
                         r = {"ok": False, "err": "bad reply from the exits add-on"}
                     return dict(r, checked=bool(r.get("ok")), link=link)
                 return {"ok": True, "checked": False, "link": link,
-                        "note": "Open the link to check it, or install the exits add-on (srnet-exits) to check here."}
+                        "note": "Open the link to check it, or install the exits add-on (srnet-exits) to check here."
+                                + (f" It should pay exactly {o['amount']} USDC." if o.get("amount") else "")}
         raise F.FormatError("no such order")
 
     def addon_call(self, name, call, raw=None, method="POST", deadline=None):
