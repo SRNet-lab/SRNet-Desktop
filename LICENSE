@@ -3,15 +3,11 @@ License notice for this repository
 
 Copyright (c) 2026 SRNet contributors.
 
-- client-cli/ (exits client, wallet, top-up, relayer, local UI) is licensed
+- client-cli/ is licensed
   under the Apache License, Version 2.0.
-  The full text is in LICENSE-APACHE-2.0.txt. Solidity sources carry
-  `SPDX-License-Identifier: Apache-2.0`.
+  The full text is in LICENSE-APACHE-2.0.txt.
 - snapps/ (typed SNApps client core, templates, viewer, reference host) is
   licensed under the MIT License. The full text is in snapps/LICENSE.
-
-client-cli/vendor/ holds copies of helper modules from the SRNet exit host
-tools, also Apache-2.0.
 
 Both licenses are permissive and compatible; you may use, modify and
 redistribute each part under its own terms.
