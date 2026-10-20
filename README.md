@@ -23,9 +23,6 @@ SRNet is beta software.
 SRNet is an independent project. It is not affiliated with or endorsed by the Session Foundation
 or the Session Technology Foundation.
 
-Guide: [Typed SNApps: an illustrated walkthrough](docs/Typed-SNApps-Walkthrough.pdf) (PDF), a
-screen-by-screen tour of the client.
-
 ## Mail
 
 Your mail address is your SRNet identity key plus the 1 to 3 mail hosts you pick, shared as a
