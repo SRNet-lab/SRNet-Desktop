@@ -1,246 +1,134 @@
-import json
+"""The SRNet core client: no wallet or eth libraries, add-on loading, and the install hint when
+the exits add-on is missing."""
+import io
+import os
+import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-# Never wait on a terminal: an unmocked prompt sees EOF and fails fast.
-import io as _io
-sys.stdin = _io.StringIO()
-sys.path[:0] = [str(ROOT), str(ROOT / "vendor")]
+sys.stdin = io.StringIO()
+sys.path[:0] = [str(ROOT)]
 
-from srnet import listings, warning, killswitch, chain, state
-from srnet.backend import MockBackend
-from lease_flow import connect
-import listing as L
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives import serialization
+from srnet import addons, cli  # noqa: E402
 
 
-def _listing_doc(price="1.00", dns="10.195.0.53"):
-    k = Ed25519PrivateKey.generate()
-    seed = k.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption())
-    pub = k.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-    d = Path(tempfile.mkdtemp())
-    key = d / "exit.key"
-    key.write_text((seed + pub).hex())
-    doc = L.make(L.load_identity(key), price_per_hour_usdc=price, max_hours=168, payout="0x" + "aa" * 20,
-                 vendor_id="0x" + "bb" * 32, chainid=31337, contract="0x" + "c0" * 20, region="test",
-                 policy=["tcp/443", "tcp/80"], **({"dns": dns} if dns else {}))
-    return doc, L.sesh_of(pub), d
+def run(argv, env=None):
+    out, err = io.StringIO(), io.StringIO()
+    with mock.patch("sys.stdout", out), mock.patch("sys.stderr", err), \
+            mock.patch.dict(os.environ, env or {"SRNET_NO_ADDONS": "1"}):
+        addons.load(refresh=True)
+        try:
+            rc = cli.main(argv)
+        except SystemExit as e:
+            rc = e.code
+    return rc, out.getvalue(), err.getvalue()
 
 
-class BuyNoExitDns(unittest.TestCase):
-    def test_buy_refuses_exit_without_resolver_before_paying(self):
-        from srnet.cli import main
-        doc, seller, d = _listing_doc(dns=None)
-        board = d / "board.json"; board.write_text(json.dumps(doc))
-        home = d / "home"; home.mkdir(); (home / "visibility.ack").write_text("I UNDERSTAND\n")
-        err = _io.StringIO()
-        with mock.patch("sys.stderr", err):
-            rc = main(["--home", str(home), "buy", seller, "--listings", str(board),
-                       "--client-sesh", "clientfixture00000000000000000000000000000000003.sesh", "--mock"])
-        self.assertEqual(rc, 1)
-        self.assertIn("no DNS resolver", err.getvalue())
-        self.assertEqual(list(home.glob("spool/hold-*.json")), [])
-        rc = main(["--home", str(home), "buy", seller, "--listings", str(board), "--system-dns",
-                   "--client-sesh", "clientfixture00000000000000000000000000000000003.sesh", "--mock"])
+class NoEth(unittest.TestCase):
+    def test_core_imports_without_eth_libraries(self):
+        """Run in a fresh interpreter where importing any eth library fails."""
+        code = ("import sys, builtins\n"
+                "real = builtins.__import__\n"
+                "def imp(name, *a, **k):\n"
+                "    if name.split('.')[0] in ('eth_account', 'eth_abi', 'eth_keys', 'eth_utils', 'web3'):\n"
+                "        raise ImportError('blocked ' + name)\n"
+                "    return real(name, *a, **k)\n"
+                "builtins.__import__ = imp\n"
+                f"sys.path.insert(0, {str(ROOT)!r})\n"
+                "import srnet.cli, srnet.addons, srnet.state, srnet.rpc, srnet.preflight\n"
+                "print('ok')\n")
+        r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60,
+                           env=dict(os.environ, SRNET_NO_ADDONS="1"))
+        self.assertEqual(r.stdout.strip(), "ok", r.stderr)
+
+    def test_no_wallet_or_exit_modules_left(self):
+        names = {p.stem for p in (ROOT / "srnet").glob("*.py")}
+        for gone in ("chain", "payments", "gasless", "relayer", "keys", "deliver", "board", "listings",
+                     "backend", "killswitch", "tunneldns", "dnsproxy", "warning", "ui", "priv"):
+            self.assertNotIn(gone, names)
+        self.assertFalse((ROOT / "vendor").exists())
+        text = (ROOT / "pyproject.toml").read_text()
+        for dep in ("eth-account", "eth-abi", "web3", "vendor"):
+            self.assertNotIn(dep, text)
+
+
+class Hint(unittest.TestCase):
+    def test_exit_commands_print_the_install_hint(self):
+        for cmd in addons.EXITS_COMMANDS:
+            rc, out, err = run(["--home", tempfile.mkdtemp(), cmd])
+            self.assertEqual(rc, 2, cmd)
+            self.assertIn("Exits are an add-on", err)
+            self.assertIn("pip install", err)
+
+    def test_help_lists_core_commands_only(self):
+        rc, out, err = run(["--help"])
         self.assertEqual(rc, 0)
+        for c in ("doctor", "snapps", "ui", "open", "mail"):
+            self.assertIn(c, out)
+        for gone in ("wallet", "balance", "relayer", "renew"):
+            self.assertNotIn(gone, out.lower())
 
 
-class ListingsTest(unittest.TestCase):
-    def test_drops_bad_keeps_good(self):
-        good, seller, d = _listing_doc()
-        bad = json.loads(json.dumps(good))
-        bad["listing"]["price_per_hour_usdc"] = "0.01"
-        path = d / "board.json"
-        path.write_text(json.dumps({"listings": [good, bad]}))
-        board = listings.load_board(path)
-        self.assertEqual(len(board), 1)
-        self.assertEqual(board[0]["listing"]["seller"], seller)
+class FakeAddon:
+    name, title, version = "exits", "Exits", "9.9"
+
+    def __init__(self):
+        self.ran = []
+
+    def register(self, sub):
+        p = sub.add_parser("exits", help="list exits")
+        p.add_argument("--x", default="1")
+        return {"exits": lambda args, st: self.ran.append(args.x) or 0}
+
+    def doctor(self, st, line):
+        line(True, "fake add-on check", "fine")
+
+    def ui_manifest(self):
+        return {"name": "exits", "title": "Exits", "tab": True, "slow": ["connect"]}
+
+    def start_ui_backend(self, st):
+        return "http://127.0.0.1:1/#tok"
 
 
-class WarningTest(unittest.TestCase):
-    def test_ack_required_then_cached(self):
-        d = Path(tempfile.mkdtemp())
-        with mock.patch("builtins.input", return_value="nope"):
-            with self.assertRaises(SystemExit):
-                warning.ensure_ack(d)
-        with mock.patch("builtins.input", return_value="I UNDERSTAND"):
-            warning.ensure_ack(d)
-        warning.ensure_ack(d)  # no input needed
+FAKE = FakeAddon()
+sys.modules["fake_srnet_addon"] = types.SimpleNamespace(ADDON=FAKE)
 
 
-class ExitDnsTest(unittest.TestCase):
-    def test_only_private_ipv4_counts_as_an_exit_resolver(self):
-        self.assertEqual(listings.exit_dns({"dns": "10.195.0.53"}), "10.195.0.53")
-        for bad in ({}, {"dns": None}, {"dns": "1.1.1.1"}, {"dns": "9.9.9.9"}, {"dns": "fd00::1"},
-                    {"dns": "10.195.0.53:53"}, {"dns": 53}, None):
-            self.assertIsNone(listings.exit_dns(bad), bad)
+class Loading(unittest.TestCase):
+    ENV = {"SRNET_ADDON_MODULES": "fake_srnet_addon:ADDON"}
 
+    def test_addon_commands_run(self):
+        FAKE.ran.clear()
+        rc, out, err = run(["--home", tempfile.mkdtemp(), "exits", "--x", "7"], self.ENV)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(FAKE.ran, ["7"])
+        rc, out, err = run(["--home", tempfile.mkdtemp(), "buy"], self.ENV)
+        self.assertEqual(rc, 2)  # the add-on did not register buy: still the hint
+        self.assertIn("Exits are an add-on", err)
 
-class KillSwitchTest(unittest.TestCase):
-    def test_arm_disarm_dry(self):
-        ks = killswitch.KillSwitch(name="srnet_ks_test")
-        scripts = []
-        def fake_f(script, check=True):
-            scripts.append(script)
-            class R:
-                returncode = 0
-                stdout = ""
-                stderr = ""
-            return R()
-        def fake(*a, check=True):
-            scripts.append(" ".join(a))
-            class R:
-                returncode = 0
-                stdout = ""
-                stderr = ""
-            return R()
-        ks._nft_f = fake_f  # type: ignore
-        ks._nft = fake  # type: ignore
-        ks.arm("eth0", bootstrap_ips=["1.2.3.4"])
-        self.assertTrue(any("meta l4proto udp" in s for s in scripts))
-        self.assertTrue(any("dport 53" in s for s in scripts))
-        self.assertTrue(any('oifname "sr-tun0"' in s for s in scripts))
-        ks.disarm()
-        self.assertTrue(any("delete" in s for s in scripts))
+    def test_disabled_and_broken_addons(self):
+        with mock.patch.dict(os.environ, {"SRNET_NO_ADDONS": "1", **self.ENV}):
+            self.assertEqual(addons.load(refresh=True), {})
+        err = io.StringIO()
+        with mock.patch.dict(os.environ, {"SRNET_ADDON_MODULES": "no_such_module:ADDON"}), \
+                mock.patch("sys.stderr", err):
+            os.environ.pop("SRNET_NO_ADDONS", None)
+            self.assertNotIn("no_such_module", addons.load(refresh=True))
+        self.assertIn("did not load", err.getvalue())
 
+    def test_ui_env_lists_tabs(self):
+        import json
+        j = json.loads(addons.ui_env({"exits": FAKE}, None))
+        self.assertEqual(j, [{"name": "exits", "title": "Exits", "url": "http://127.0.0.1:1/#tok", "slow": ["connect"]}])
 
-class FlowReuseTest(unittest.TestCase):
-    def test_connect_spend_after_map(self):
-        b = MockBackend()
-        r = connect(b, "S")
-        self.assertTrue(r.ok)
-        self.assertEqual(b.log, ["reserve", "map", "capable?", "commit"])
-        self.assertTrue(b.spent)
-
-    def test_failed_map_releases(self):
-        b = MockBackend(map_ok=False)
-        r = connect(b, "S")
-        self.assertFalse(r.ok)
-        self.assertFalse(b.spent)
-        self.assertIn("release", b.log)
-
-
-class ChainRefuseTest(unittest.TestCase):
-    def test_mainnet_refused(self):
-        with self.assertRaises(SystemExit):
-            chain.refuse_mainnet(8453)
-
-
-class BuyMockTest(unittest.TestCase):
-    def test_buy_writes_claim(self):
-        from srnet.cli import main
-        doc, seller, d = _listing_doc()
-        board = d / "board.json"
-        board.write_text(json.dumps({"listings": [doc]}))
-        home = d / "home"
-        # ack first
-        (home).mkdir()
-        (home / "visibility.ack").write_text("I UNDERSTAND\n")
-        rc = main(["--home", str(home), "buy", seller, "--listings", str(board),
-                   "--client-sesh", "clientfixture00000000000000000000000000000000003.sesh",
-                   "--mock"])
-        self.assertEqual(rc, 0)
-        st = json.loads((home / "state.json").read_text())
-        self.assertEqual(st["pending_buy"]["seller"], seller)
-        claim = Path(st["pending_buy"]["claim_path"])
-        self.assertTrue(claim.exists())
-        self.assertEqual(json.loads(claim.read_text())["v"], 1)
-
-    def _buy(self, price, hours):
-        from srnet.cli import main
-        doc, seller, d = _listing_doc(price)
-        board = d / "board.json"
-        board.write_text(json.dumps({"listings": [doc]}))
-        home = d / "home"; home.mkdir()
-        (home / "visibility.ack").write_text("I UNDERSTAND\n")
-        rc = main(["--home", str(home), "buy", seller, "--listings", str(board), "--hours", str(hours),
-                   "--client-sesh", "clientfixture00000000000000000000000000000000003.sesh", "--mock"])
-        return rc, home
-
-    def test_hourly_amount_is_rate_times_hours(self):
-        rc, home = self._buy("0.50", 6)
-        self.assertEqual(rc, 0)
-        p = json.loads((home / "state.json").read_text())["pending_buy"]
-        self.assertEqual((p["rate_per_hour"], p["hours"], p["amount"]), (500_000, 6, 3_000_000))
-
-    def test_over_cap_or_zero_hours_refused(self):
-        with self.assertRaises(SystemExit):
-            self._buy("5.00", 5)  # $25 > $20 cap
-        with self.assertRaises(SystemExit):
-            self._buy("1.00", 0)
-
-
-class FinalPaymentAndRenewTest(unittest.TestCase):
-    def test_failed_exit_sends_nothing_and_has_no_refund(self):
-        ch = chain.MockChain()
-        a = ch.start_lease("0x" + "01" * 32, 500_000, 1)
-        b = ch.start_lease("0x" + "01" * 32, 500_000, 1)
-        ch.release_failed(a)   # exit did not work -> nothing on chain (payment final), stop renewing
-        ch.settle_success(b)
-        self.assertTrue(ch.hold_info(a)[4], "lease stays paid/active: there is no buyer cancel")
-        self.assertEqual(ch.released, {a})
-        self.assertFalse(hasattr(chain.ChainCfg, "cancel"), "client has no buyer cancel")
-
-    def test_buy_defaults_to_one_hour_with_auto_renew(self):
-        rc, home = BuyMockTest._buy(BuyMockTest(), "1.00", 1)
-        st = json.loads((home / "state.json").read_text())
-        self.assertEqual(st["pending_buy"]["hours"], 1)
-        self.assertTrue(st["lease"]["auto_renew"])
-
-    def _st(self, ch, lease_id):
-        d = Path(tempfile.mkdtemp())
-        s = state.State(d)
-        s.data["lease"] = {"seller": "x", "contract": ch.contract, "chainid": 31337, "current": lease_id,
-                           "renewed_from": [], "auto_renew": True,
-                           "client_sesh": "clientfixture00000000000000000000000000000000003.sesh",
-                           "spool": str(d / "spool"), "rate_per_hour": 500_000}
-        s.save()
-        return s, d
-
-    def test_hourly_renew_in_last_window_drops_new_claim(self):
-        from srnet.cli import renew_once
-        ch = chain.MockChain()
-        a = ch.start_lease("0x" + "01" * 32, 500_000, 1)
-        s, d = self._st(ch, a)
-        r = renew_once(ch, s)
-        self.assertFalse(r["renewed"])
-        self.assertTrue(r["reason"].startswith("wait:"))
-        ch.clock += 3600 - 300  # 5 minutes left
-        r = renew_once(ch, s)
-        self.assertTrue(r["renewed"], r)
-        new = r["lease_id"]
-        self.assertEqual(ch.holds[new]["start"], ch.holds[a]["end"], "renewal starts exactly at the previous end")
-        self.assertEqual(ch.holds[new]["rate"], 500_000)
-        self.assertTrue((d / "spool" / f"hold-{new}.json").exists())
-        self.assertEqual(renew_once(ch, s)["renewed"], False)  # next renewal not due yet
-
-    def test_no_renew_after_seller_stop_or_when_off(self):
-        from srnet.cli import renew_once
-        ch = chain.MockChain()
-        a = ch.start_lease("0x" + "01" * 32, 500_000, 1)
-        s, _ = self._st(ch, a)
-        ch.seller_cancel(a)
-        ch.clock += 3500
-        self.assertEqual(renew_once(ch, s)["reason"], "seller_stopped")
-        b = ch.start_lease("0x" + "01" * 32, 500_000, 1)
-        s2, _ = self._st(ch, b)
-        s2.data["lease"]["auto_renew"] = False
-        ch.clock += 3500
-        self.assertEqual(renew_once(ch, s2)["reason"], "auto_renew_off")
-
-    def test_backend_release_turns_auto_renew_off(self):
-        from srnet.backend import LiveBackend
-        ch = chain.MockChain()
-        a = ch.start_lease("0x" + "01" * 32, 500_000, 1)
-        s, d = self._st(ch, a)
-        b = LiveBackend(rpc=None, chain=ch, state=s, client_sesh="c.sesh", spool=d / "spool")
-        b.release(str(a))
-        self.assertFalse(s.data["lease"]["auto_renew"])
+    def tearDown(self):
+        with mock.patch.dict(os.environ, {"SRNET_NO_ADDONS": "1"}):
+            addons.load(refresh=True)
 
 
 if __name__ == "__main__":
