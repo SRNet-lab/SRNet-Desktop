@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # SRNet client installer for Linux and macOS. Installs into your user account only (no sudo).
-#   ./install.sh            install or upgrade
+#   ./install.sh               install or upgrade
+#   ./install.sh --with-exits  also install the exits add-on (buy time on an exit, connect through it)
 #   ./install.sh --uninstall
 set -euo pipefail
 PREFIX="${SRNET_PREFIX:-$HOME/.local/share/srnet-client}"
@@ -9,9 +10,12 @@ SRC="$(cd "$(dirname "$0")" && pwd)"
 
 if [ "${1:-}" = "--uninstall" ]; then
   rm -rf "$PREFIX" "$BIN/srnet" "$BIN/srnet-relayer" "$HOME/.local/share/applications/srnet-ui.desktop" "$HOME/.local/share/applications/srnet-open.desktop"
-  echo "Removed the SRNet client. Your wallet and settings in ~/.srnet were left in place."
+  echo "Removed the SRNet client. Your settings in ~/.srnet were left in place."
   exit 0
 fi
+WITH_EXITS=0
+[ "${1:-}" = "--with-exits" ] && WITH_EXITS=1
+EXITS_SRC="${SRNET_EXITS_SRC:-srnet-exits @ git+https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack}"
 
 PY="${PYTHON:-python3}"
 command -v "$PY" >/dev/null || { echo "Python 3.10 or newer is required." >&2; exit 1; }
@@ -30,20 +34,19 @@ find "$PREFIX/app" -name __pycache__ -prune -exec rm -rf {} +
 
 [ -x "$PREFIX/venv/bin/python" ] || "$PY" -m venv "$PREFIX/venv"
 "$PREFIX/venv/bin/python" -m pip install --quiet --upgrade pip
-"$PREFIX/venv/bin/python" -m pip install --quiet "cryptography>=41" "pyzmq>=25" "eth-account>=0.11" "eth-abi>=5" "qrcode>=7"
+"$PREFIX/venv/bin/python" -m pip install --quiet "$PREFIX/app/client-cli[qr]"
+if [ "$WITH_EXITS" = 1 ] || "$PREFIX/venv/bin/python" -m pip show --quiet srnet-exits >/dev/null 2>&1; then
+  echo "Installing the exits add-on"
+  "$PREFIX/venv/bin/python" -m pip install --quiet --upgrade "$EXITS_SRC"
+fi
 
 cat > "$BIN/srnet" <<W
 #!/usr/bin/env bash
 export SRNET_SNAPPS_DIR="$PREFIX/app/snapps"
-export PYTHONPATH="$PREFIX/app/client-cli\${PYTHONPATH:+:\$PYTHONPATH}"
 exec "$PREFIX/venv/bin/python" -m srnet "\$@"
 W
-cat > "$BIN/srnet-relayer" <<W
-#!/usr/bin/env bash
-export PYTHONPATH="$PREFIX/app/client-cli\${PYTHONPATH:+:\$PYTHONPATH}"
-exec "$PREFIX/venv/bin/python" -m srnet.relayer "\$@"
-W
-chmod 755 "$BIN/srnet" "$BIN/srnet-relayer"
+chmod 755 "$BIN/srnet"
+rm -f "$BIN/srnet-relayer"
 
 if [ "$(uname -s)" = "Linux" ] && [ -d "$HOME/.local/share" ]; then
   mkdir -p "$HOME/.local/share/applications"
@@ -72,9 +75,9 @@ case ":$PATH:" in
     echo "  New terminals after your next login pick it up on Ubuntu automatically."
     ;;
 esac
-echo "  srnet key new      create your wallet (saved encrypted)"
-echo "  srnet doctor       check your setup (Session Router, DNS, wallet); writes a report"
+echo "  srnet doctor       check your setup (Session Router, DNS); writes a report"
 echo "  srnet ui           open the app in your browser"
 echo "Session Router is a separate program: install and start it yourself before using .sesh names."
-[ "$(uname -s)" = "Darwin" ] && echo "  note: 'srnet connect' (routing traffic through an exit) is Linux-only for now."
+[ "$WITH_EXITS" = 1 ] && echo "  srnet exits        list exits; buy time with: srnet buy --seller <id> --hours N"
+[ "$WITH_EXITS" = 1 ] && [ "$(uname -s)" = "Darwin" ] && echo "  note: 'srnet connect' (routing traffic through an exit) is Linux-only for now."
 exit 0

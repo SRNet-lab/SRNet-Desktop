@@ -24,10 +24,10 @@ for _ in range(60):
         page = urllib.request.urlopen(url, timeout=5).read().decode(); break
     except OSError:
         time.sleep(1)
-assert page and 'data-b="exits"' in page and "Top up from a phone wallet" in page and "Check my setup" in page
+assert page and "Check my setup" in page and 'id="addons"' in page and "wallet" not in page.lower()
 col = json.loads(urllib.request.urlopen(urllib.request.Request(url + "api/collections", headers={"X-Core": "1"}), timeout=10).read())
-assert col.get("wallet") is True, col
-print("PASS srnet ui (one app: SNApps + native Exits/Wallet + Check my setup)", url)
+assert col.get("addons") == [] and "wallet" not in col, col
+print("PASS srnet ui (one app: SNApps + Check my setup, no add-ons)", url)
 kill(ui)
 
 # snapps: a local testbed config, then the installed launcher serves the shell page

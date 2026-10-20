@@ -1,6 +1,6 @@
 """Local install checks against the installed client, on loopback only:
 local test host -> srnet snapps -> join room by srnet:// link -> post -> mail to self ->
-encrypted upload + open -> srnet ui serves Exits and Wallet. No chain transactions.
+encrypted upload + open -> srnet ui serves the app. No chain transactions.
 Runs on Windows (CI) and Linux/macOS (installed launcher)."""
 import json, os, subprocess, sys, tempfile, time, urllib.request
 from pathlib import Path
@@ -120,13 +120,11 @@ try:
             time.sleep(1)
     if page is None:
         ui.terminate(); print("srnet ui output:", ui.stdout.read()[-3000:], flush=True)
-    assert page and 'data-b="exits"' in page and "Top up from a phone wallet" in page, page
+    assert page and "Check my setup" in page and 'id="addons"' in page, page
     hdr = {"X-Core": "1", "Content-Type": "application/json"}
     col = json.loads(urllib.request.urlopen(urllib.request.Request(url + "api/collections", headers=hdr), timeout=10).read())
-    assert col.get("wallet") is True, col
-    ts = json.loads(urllib.request.urlopen(urllib.request.Request(url + "api/wallet/topup/status", data=b"{}", headers=hdr), timeout=10).read())
-    assert ts.get("ok") is True, ts
-    print("PASS srnet ui: one app, native Exits + Wallet tabs, wallet bridge answers", flush=True)
+    assert isinstance(col.get("addons"), list) and "wallet" not in col, col
+    print("PASS srnet ui: one app, add-on tabs listed: %s" % [a["name"] for a in col["addons"]], flush=True)
     print("LOCAL CHECKS OK")
 finally:
     stop_all()

@@ -1,7 +1,8 @@
 # SRNet client installer for Windows (per-user, no admin rights needed).
-#   powershell -ExecutionPolicy Bypass -File install.ps1            install or upgrade
+#   powershell -ExecutionPolicy Bypass -File install.ps1              install or upgrade
+#   powershell -ExecutionPolicy Bypass -File install.ps1 -WithExits   also install the exits add-on
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall
-param([switch]$Uninstall, [string]$Prefix = "$env:LOCALAPPDATA\srnet-client", [switch]$NoShortcut)
+param([switch]$Uninstall, [string]$Prefix = "$env:LOCALAPPDATA\srnet-client", [switch]$NoShortcut, [switch]$WithExits)
 $ErrorActionPreference = "Stop"
 $Src = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Bin = Join-Path $Prefix "bin"
@@ -18,7 +19,7 @@ if ($Uninstall) {
   if (Test-Path $Menu) { Remove-Item -Recurse -Force $Menu }
   if (Test-Path "HKCU:\Software\Classes\srnet") { Remove-Item -Recurse -Force "HKCU:\Software\Classes\srnet" }
   Remove-FromUserPath $Bin
-  Write-Host "Removed the SRNet client. Your wallet and settings in $HOME\.srnet were left in place."
+  Write-Host "Removed the SRNet client. Your settings in $HOME\.srnet were left in place."
   exit 0
 }
 
@@ -49,24 +50,25 @@ $Venv = Join-Path $Prefix "venv"
 $VPy = Join-Path $Venv "Scripts\python.exe"
 if (-not (Test-Path $VPy)) { & $PyExe @PyArgs -m venv $Venv; if ($LASTEXITCODE) { throw "venv failed" } }
 & $VPy -m pip install --quiet --upgrade pip
-& $VPy -m pip install --quiet "cryptography>=41" "pyzmq>=25" "eth-account>=0.11" "eth-abi>=5" "qrcode>=7"
+& $VPy -m pip install --quiet "$App\client-cli[qr]"
 if ($LASTEXITCODE) { throw "pip install failed" }
+$ExitsSrc = if ($env:SRNET_EXITS_SRC) { $env:SRNET_EXITS_SRC } else { "srnet-exits @ git+https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack" }
+& $VPy -m pip show --quiet srnet-exits 2>$null | Out-Null
+if ($WithExits -or $LASTEXITCODE -eq 0) {
+  Write-Host "Installing the exits add-on"
+  & $VPy -m pip install --quiet --upgrade $ExitsSrc
+  if ($LASTEXITCODE) { throw "pip install of the exits add-on failed" }
+}
 
 $Launcher = @"
 @echo off
 set "PYTHONUTF8=1"
 set "SRNET_SNAPPS_DIR=$App\snapps"
-set "PYTHONPATH=$App\client-cli;%PYTHONPATH%"
 "$VPy" -m srnet %*
 "@
 Set-Content -Path (Join-Path $Bin "srnet.cmd") -Value $Launcher -Encoding ASCII
-$Relayer = @"
-@echo off
-set "PYTHONUTF8=1"
-set "PYTHONPATH=$App\client-cli;%PYTHONPATH%"
-"$VPy" -m srnet.relayer %*
-"@
-Set-Content -Path (Join-Path $Bin "srnet-relayer.cmd") -Value $Relayer -Encoding ASCII
+$OldRelayer = Join-Path $Bin "srnet-relayer.cmd"
+if (Test-Path $OldRelayer) { Remove-Item -Force $OldRelayer }
 
 $p = [Environment]::GetEnvironmentVariable("Path", "User")
 if (-not (($p -split ";") -contains $Bin)) {
@@ -81,7 +83,7 @@ if (-not $NoShortcut) {
   $lnk.Arguments = "ui"
   $lnk.WorkingDirectory = $HOME
   $lnk.WindowStyle = 7
-  $lnk.Description = "SNApps, exits and wallet for SRNet"
+  $lnk.Description = "SNApps for SRNet"
   $lnk.Save()
 }
 
@@ -96,7 +98,6 @@ if (-not $NoShortcut) {
 
 Write-Host ""
 Write-Host "Done. Open a new terminal, then:"
-Write-Host "  srnet key new      create your wallet (saved encrypted)"
 Write-Host "  srnet ui           open the app in your browser (also in the Start menu: SRNet)"
 Write-Host "  srnet doctor       check my setup (writes a report you can send)"
-Write-Host "Note: 'srnet connect' (routing traffic through an exit) is Linux-only for now."
+if ($WithExits) { Write-Host "Exits add-on: 'srnet exits' and 'srnet buy' work here; 'srnet connect' is Linux-only for now." }
