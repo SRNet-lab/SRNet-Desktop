@@ -112,7 +112,7 @@ class InstallSh(unittest.TestCase):
         rc = (home / ".bashrc").read_text()
         self.assertTrue(rc.startswith("# mine\nalias ll='ls -l'\n"))
         self.assertEqual(rc.count("added by SRNet-Desktop install.sh"), 1)
-        self.assertIn(f'export PATH="{self.bin}:$PATH"', rc)
+        self.assertIn(f'export PATH={self.bin}:"$PATH"', rc)
         self.assertIn("Added", r.stdout)
         self.assertFalse((home / ".zshrc").exists())
         # the line works in a fresh bash
@@ -128,6 +128,35 @@ class InstallSh(unittest.TestCase):
         self.assertNotIn("SRNet-Desktop install.sh", (home / ".bashrc").read_text())
         self.assertIn("alias ll='ls -l'", (home / ".bashrc").read_text())
         self.assertNotIn("SRNet-Desktop install.sh", (home / ".zshrc").read_text())
+        self.assertEqual((home / ".bashrc").read_text(), "# mine\nalias ll='ls -l'\n", "no blank line left behind")
+
+    def test_uninstall_keeps_a_user_line_that_follows_our_marker(self):
+        home = self.tmp / "home"
+        home.mkdir(exist_ok=True)
+        self.run_install()
+        rc = home / ".bashrc"
+        lines = rc.read_text().splitlines()
+        i = next(n for n, l in enumerate(lines) if "added by SRNet-Desktop install.sh" in l)
+        lines[i + 1] = "export IMPORTANT=1"          # the user replaced our line with their own
+        rc.write_text("\n".join(lines) + "\n")
+        self.run_install("--uninstall")
+        self.assertIn("export IMPORTANT=1", rc.read_text())
+        self.assertNotIn("SRNet-Desktop install.sh", rc.read_text())
+
+    def test_bin_path_is_quoted_in_the_rc_file(self):
+        home = self.tmp / "home"
+        home.mkdir(exist_ok=True)
+        flag = self.tmp / "pwned"
+        weird = self.tmp / f'a"$(touch {flag})"b'
+        self.bin = weird
+        r = self.run_install()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = subprocess.run(["bash", "-c", f"PATH=/usr/bin:/bin; . {home / '.bashrc'}; printf %s \"$PATH\""],
+                             capture_output=True, text=True).stdout
+        self.assertFalse(flag.exists(), "the bin path ran as code")
+        self.assertTrue(out.startswith(str(weird) + ":"), out)
+        self.run_install("--uninstall")
+        self.assertNotIn("SRNet-Desktop install.sh", (home / ".bashrc").read_text())
 
     def test_old_install_with_wallet_libs_gets_a_clean_venv(self):
         self.run_install()

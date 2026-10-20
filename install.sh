@@ -20,11 +20,24 @@ for a in "$@"; do
 done
 
 RC_MARK="# srnet: ~/.local/bin on PATH (added by SRNet-Desktop install.sh)"
+# The one line we add after RC_MARK (the bin dir shell-quoted, so no path can run as code).
+if [ "$BIN" = "$HOME/.local/bin" ]; then
+  RC_LINE='case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH";; esac'
+else
+  QBIN=$(printf '%q' "$BIN")
+  RC_LINE="case \":\$PATH:\" in *:${QBIN}:*) ;; *) export PATH=${QBIN}:\"\$PATH\";; esac"
+fi
 if [ "$UNINSTALL" = 1 ]; then
   rm -rf "$PREFIX" "$BIN/srnet" "$BIN/srnet-relayer" "$HOME/.local/share/applications/srnet-ui.desktop" "$HOME/.local/share/applications/srnet-open.desktop"
   for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     if [ -f "$rc" ] && grep -qF "$RC_MARK" "$rc"; then
-      awk -v m="$RC_MARK" 'skip { skip = 0; next } $0 == m { skip = 1; next } { print }' "$rc" > "$rc.srnet-tmp" \
+      # drop our marker, the blank line we put before it, and the next line only if it is exactly ours
+      SRNET_RC_M="$RC_MARK" SRNET_RC_L="$RC_LINE" awk '{ a[NR] = $0 }
+        END { m = ENVIRON["SRNET_RC_M"]; l = ENVIRON["SRNET_RC_L"]   # (awk -v would eat backslashes)
+              for (i = 1; i <= NR; i++) {
+                if (a[i] == m) { if (a[i + 1] == l) i++; continue }
+                if (a[i] == "" && a[i + 1] == m) continue
+                print a[i] } }' "$rc" > "$rc.srnet-tmp" \
         && cat "$rc.srnet-tmp" > "$rc"
       rm -f "$rc.srnet-tmp"
     fi
@@ -105,13 +118,11 @@ fi
 
 # New terminals: put $BIN on PATH in ~/.bashrc (and ~/.zshrc if there is one), once.
 RC_DONE=""
-if [ "$BIN" = "$HOME/.local/bin" ]; then RC_PATH='$HOME/.local/bin'; else RC_PATH="$BIN"; fi
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
   if [ "$rc" = "$HOME/.zshrc" ] && [ ! -f "$rc" ]; then continue; fi
   if [ -f "$rc" ] && grep -qF "$RC_MARK" "$rc"; then continue; fi
   [ -d "$HOME" ] || continue
-  if printf '\n%s\ncase ":$PATH:" in *":%s:"*) ;; *) export PATH="%s:$PATH";; esac\n' \
-       "$RC_MARK" "$RC_PATH" "$RC_PATH" >> "$rc" 2>/dev/null; then
+  if printf '\n%s\n%s\n' "$RC_MARK" "$RC_LINE" 2>/dev/null >> "$rc"; then
     RC_DONE="$RC_DONE ${rc/#$HOME/~}"
   fi
 done
