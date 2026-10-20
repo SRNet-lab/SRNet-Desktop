@@ -7,10 +7,12 @@ Session Router.
   `.sesh` pages. Hosts serve only signed data; the client ships the interface. Every record is
   signature-checked, every template runs in a sandbox with no network access, and HTML pages
   open in a viewer that strips all scripts.
-- **Mail.** Sealed messages to anyone's SRNet address, stored by mail hosts until they come
+- **Mail.** Messages to anyone's SRNet address are sealed on your computer with
+  ChaCha20-Poly1305 before they're sent, and mail hosts store them until the recipient comes
   online. Hosts can't read your mail or see who sent it. Senders sign every message.
-- **Private files.** File drops are encrypted on your computer before upload. Share with chosen
-  people, with anyone who has the link, or publish unencrypted if you choose.
+- **Private files.** File drops are encrypted on your computer with ChaCha20-Poly1305 before
+  upload. Share with chosen people, with anyone who has the link, or publish unencrypted if you
+  choose.
 - **Shops.** A storefront shows each item's price with a payment address, the exact amount and
   a QR code. You pay from your own wallet; the client never holds money.
 - **Exits (add-on).** Buying time on an SRNet exit and sending your traffic through it is a
