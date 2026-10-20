@@ -228,7 +228,7 @@ class UsdcCheck(unittest.TestCase):
         self.d = donation("usdc", 8453, 110_423)
 
     def test_paid(self):
-        self.c.add_usdc(tx(1), P.USDC_TOKENS[8453], TO, 110_423)
+        self.c.add_usdc(tx(1), P.USDC_TOKENS[8453].lower(), TO, 110_423)   # logs use lower case
         self.assertEqual(P.check([self.c], self.d, TO)["state"], "paid")
 
     def test_fake_token_wrong_recipient_wrong_amount(self):
@@ -284,6 +284,15 @@ class AppFlow(unittest.TestCase):
         self.assertEqual(app2.ledger.get(v1["id"])["status"], "paid")
         self.assertIn("already used", app2.check(v2["id"], tx(1), "b")["why"])
 
+    def test_ledger_refuses_to_forget(self):
+        v1 = self.app.create("eth", 1, "0.0003", "a")
+        v2 = self.app.create("eth", 1, "0.0003", "b")
+        self.assertEqual(self.app.ledger.mark_paid(v1["id"], tx(8), {})["state"], "paid")
+        self.assertIn("already used", self.app.ledger.mark_paid(v2["id"], tx(8), {})["why"])
+        (Path(self.tmp.name) / "donations.json").write_text("{broken")
+        with self.assertRaises(SystemExit):
+            S.App(Path(self.tmp.name), TO, rpcs=self.chains)
+
     def test_other_donations_tx_cant_be_claimed(self):
         # someone else's earlier payment of a different amount doesn't pay this donation
         v1 = self.app.create("usdc", 8453, "1", "a")
@@ -336,7 +345,7 @@ class Http(unittest.TestCase):
     def test_index_and_headers(self):
         code, hdrs, body = self.req("/")
         self.assertEqual(code, 200)
-        self.assertIn("script-src", hdrs["Content-Security-Policy"] + " script-src")
+        self.assertIn("default-src 'none'", hdrs["Content-Security-Policy"])
         self.assertNotIn("<script", body.decode())
         self.assertIn(TO, body.decode())
         self.assertIn("not affiliated", body.decode())

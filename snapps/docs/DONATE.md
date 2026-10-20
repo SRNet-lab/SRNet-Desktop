@@ -25,6 +25,9 @@ This page is a separate address and QR shown to the donor, so that limit doesn't
 Limits: native ETH sent through a smart-contract wallet (an internal transfer) can't be checked here,
 though it still arrives. A payment of a different amount than asked isn't matched automatically.
 A reorg deeper than the confirmation count after a donation was marked paid isn't noticed.
+A payment checked after its 7 days are up isn't matched. Checks are rate limited per caller and in
+total, so a flood of checks can delay real ones for a few minutes. If either RPC for a chain is down,
+checks on that chain wait until it's back.
 
 Run it on loopback and route `/donate` to it from the store's front:
 

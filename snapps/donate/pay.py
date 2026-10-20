@@ -16,9 +16,9 @@ import urllib.error
 import urllib.request
 from decimal import Decimal, InvalidOperation
 
-USDC_TOKENS = {
-    42161: "0xaf88d065e77c8cc2239327c5edb3a432268e5831",   # Arbitrum One (Circle)
-    8453: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",    # Base (Circle)
+USDC_TOKENS = {   # as shown to donors (checksummed); compared in lower case
+    42161: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",   # Arbitrum One (Circle)
+    8453: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",    # Base (Circle)
 }
 # Two independent public RPCs per chain, both able to read week-old receipts (some free endpoints
 # refuse anything older than a few hours).
@@ -156,7 +156,8 @@ def check_one(rpc, d: dict, to: str) -> dict:
         raise RpcError("RPC is on another chain")
     t = rpc.call("eth_getTransactionByHash", tx)
     if not t:
-        return {"state": "pending", "why": f"transaction not found on {CHAINS[chain]['label']} (yet)"}
+        return {"state": "pending", "why": f"transaction not found on {CHAINS[chain]['label']} (yet). "
+                "If it was sent on another network, it won't show up here."}
     if t.get("chainId") is not None and _int(t["chainId"]) != chain:
         return {"state": "bad", "why": "that transaction is for another chain"}
     if str(t.get("hash", "")).lower() != tx:
@@ -174,7 +175,7 @@ def check_one(rpc, d: dict, to: str) -> dict:
                     "(payments forwarded by a smart-contract wallet can't be checked here)"}
         got = [_int(t.get("value", "0x0"))]
     else:
-        token = USDC_TOKENS[chain]
+        token = USDC_TOKENS[chain].lower()
         got = []
         for lg in r.get("logs") or []:
             tp = lg.get("topics") or []

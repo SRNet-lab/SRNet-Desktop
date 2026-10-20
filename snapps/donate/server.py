@@ -56,13 +56,17 @@ class Ledger:
         self.path, self.clock, self.lock = Path(path), clock, threading.RLock()
         self.d = {"donations": {}, "used_tx": {}}
         if self.path.exists():
+            # Refuse to start on an unreadable ledger rather than start empty: an empty ledger would
+            # forget which transactions already paid a donation.
             try:
                 with open(self.path) as f:
                     got = json.load(f)
-                if isinstance(got.get("donations"), dict) and isinstance(got.get("used_tx"), dict):
-                    self.d = got
+                ok = isinstance(got.get("donations"), dict) and isinstance(got.get("used_tx"), dict)
             except (OSError, ValueError, AttributeError):
-                pass
+                ok = False
+            if not ok:
+                raise SystemExit(f"{self.path} is unreadable; fix or move it away first")
+            self.d = got
 
     def _save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -318,8 +322,8 @@ NOT_FOUND = page("Not found", f"<p>No such donation (it may have expired). <a hr
 def make_handler(app: App):
     class H(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
-        server_version = "srnet-donate"
-        sys_version = ""
+        def version_string(self):
+            return "srnet-donate"
 
         def log_message(self, *a):
             pass
