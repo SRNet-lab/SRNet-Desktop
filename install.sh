@@ -75,6 +75,25 @@ if [ "$(uname -s)" = "Linux" ] && [ -d "$HOME/.local/share" ]; then
   command -v update-desktop-database >/dev/null && update-desktop-database "$HOME/.local/share/applications" || true
 fi
 
+# Exits need two Session Router client settings (persistent key, blackhole-routes=false).
+# srnet setup-router sets them, keeping the rest of client.ini; it asks sudo once.
+ROUTER_SETUP=""
+ROUTER_INI="${SRNET_ROUTER_INI:-/etc/session-router/client.ini}"
+if [ "$WITH_EXITS" = 1 ] && [ "$(uname -s)" = "Linux" ] && [ "${SRNET_SKIP_ROUTER_SETUP:-0}" != 1 ]; then
+  if [ -e "$ROUTER_INI" ]; then
+    echo
+    echo "Setting up Session Router for exits (persistent key, blackhole-routes=false; the rest of"
+    echo "$ROUTER_INI stays as it is). sudo asks for your password once."
+    if "$BIN/srnet" setup-router --ini "$ROUTER_INI"; then
+      ROUTER_SETUP=ok
+    else
+      ROUTER_SETUP=failed
+    fi
+  else
+    ROUTER_SETUP=noini
+  fi
+fi
+
 echo
 echo "Done. Next steps:"
 case ":$PATH:" in
@@ -104,6 +123,11 @@ if command -v session-router >/dev/null 2>&1 || [ -x /usr/bin/session-router ] |
 else
   echo "Session Router is a separate program (README, Install, step 1): install and start it before using .sesh names."
 fi
+case "$ROUTER_SETUP" in
+  ok) echo "  Session Router: set up for exits (persistent key, no blackhole routes)";;
+  failed) echo "  Session Router is not set up for exits yet; run: srnet setup-router";;
+  noini) echo "  After installing Session Router, run once: srnet setup-router";;
+esac
 [ "$WITH_EXITS" = 1 ] && echo "  srnet exits        list exits; buy time with: srnet buy --seller <id> --hours N"
 [ "$WITH_EXITS" = 1 ] && [ "$(uname -s)" = "Darwin" ] && echo "  note: 'srnet connect' (routing traffic through an exit) is Linux-only for now."
 exit 0

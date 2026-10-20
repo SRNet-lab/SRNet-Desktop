@@ -21,7 +21,7 @@ import os
 import sys
 
 GROUP = "srnet.addons"
-EXITS_COMMANDS = ("exits", "buy", "paid", "connect", "status", "disconnect", "verify")
+EXITS_COMMANDS = ("exits", "buy", "paid", "connect", "status", "disconnect", "verify", "setup-router")
 EXITS_SOURCE = "git+https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack"
 EXITS_HINT = ("Exits are an add-on. Install it with ./install.sh --with-exits in your SRNet-Desktop checkout, "
               f'or: "{sys.executable}" -m pip install "srnet-exits @ {EXITS_SOURCE}"')
