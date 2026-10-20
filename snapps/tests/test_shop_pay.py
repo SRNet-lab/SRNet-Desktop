@@ -57,7 +57,11 @@ class ShopPay(unittest.TestCase):
         self.assertTrue(2_500_000 < units <= 2_500_000 + PI.ORDER_ID_MAX, s["amount"])   # this order's own amount
         self.assertEqual(s["token_address"], PI.USDC[8453])
         self.assertEqual(s["uri"], f"ethereum:{PI.USDC[8453]}@8453/transfer?address={PAY_TO}&uint256={units}")
-        self.assertNotEqual({self.buyer.pay_draft("store", l["id"])["sheet"]["amount"] for _ in range(5)}, {s["amount"]})
+        again = [self.buyer.pay_draft("store", l["id"]) for _ in range(3)]   # Pay again: the same sheet
+        self.assertEqual({(x["token"], x["sheet"]["amount"]) for x in again}, {(d["token"], s["amount"])})
+        self.assertTrue(all(x["reused"] for x in again))
+        _, l2 = self.listing("Stickers 2")
+        self.assertNotEqual(self.buyer.pay_draft("store", l2["id"])["token"], d["token"])   # another item
         self.assertIn("never sends funds", s["note"])
         if PI.have_qr():
             self.assertTrue(self.buyer.pay_qr(d["token"]).lstrip().startswith(b"<"))
@@ -207,6 +211,44 @@ class ShopPay(unittest.TestCase):
         self.assertEqual(mine[0].get("amount"), d["sheet"]["amount"])
         p = self.env["tmp"] / "pay" / "buyer" / "pending_pay.json"
         self.assertEqual(p.stat().st_mode & 0o777, 0o600)
+
+    def test_pay_again_after_a_reload_reuses_the_open_sheet(self):
+        import io
+        import time
+        from unittest import mock
+        from typed import core as CORE
+        _, l = self.listing("Teapot")
+        d = self.buyer.pay_draft("store", l["id"])
+        self.assertNotIn("reused", d)
+        again = Core(str(self.env["tmp"] / "pay" / "buyer"), self.cfg, autoconfirm=True)   # app restarted
+        again.sync("store")
+        r = again.pay_draft("store", l["id"])
+        self.assertEqual((r["token"], r["sheet"]["amount"], r["sheet"]["uri"]),
+                         (d["token"], d["sheet"]["amount"], d["sheet"]["uri"]))
+        self.assertIn("You opened this payment on", r["sheet"]["note"])
+        # another buyer on the same item gets their own amount
+        other = Core(str(self.env["tmp"] / "pay" / "buyer-b"), self.cfg, autoconfirm=True)
+        other.sync()
+        self.assertNotEqual(other.pay_draft("store", l["id"])["token"], d["token"])
+        # a price change means a new sheet
+        err = io.StringIO()
+        p = self.env["tmp"] / "pay" / "buyer" / "pending_pay.json"
+        raw = json.loads(p.read_text())
+        raw["junk1"], raw["junk2"] = "x", {"collection": "store"}
+        p.write_text(json.dumps(raw))
+        with mock.patch.object(CORE.sys, "stderr", err):
+            c3 = Core(str(self.env["tmp"] / "pay" / "buyer"), self.cfg, autoconfirm=True)
+        c3.sync("store")
+        self.assertEqual(err.getvalue().count("skipping a bad entry"), 2)
+        self.assertNotIn("junk1", c3.pending_pay)
+        self.assertEqual(c3.pay_draft("store", l["id"])["token"], d["token"])
+        with mock.patch.object(c3, "_listing", return_value=dict(c3._listing("store", l["id"]), price="3")):
+            self.assertNotEqual(c3.pay_draft("store", l["id"])["token"], d["token"])
+        # once the sheet has expired, Pay makes a new one
+        later = Core(str(self.env["tmp"] / "pay" / "buyer"), self.cfg, autoconfirm=True)
+        later.clock = lambda: time.time() + CORE.PENDING_PAY_S + 5
+        later.sync("store")
+        self.assertNotEqual(later.pay_draft("store", l["id"])["token"], d["token"])
 
     def test_order_on_another_chain_or_amount_is_not_paid(self):
         items = [{"t": "shop.listing", "author": "aa" * 32, "id": "x1", "ts": 1, "refs": [],

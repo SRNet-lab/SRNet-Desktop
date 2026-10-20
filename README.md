@@ -262,6 +262,8 @@ counts if the transaction pays exactly that amount on the listing's network, and
 (in any of your stores paid to the same address) names the same transaction. If two orders name
 one transaction, both are shown as in dispute so the seller can ask the buyers. An open payment
 sheet is remembered for a week, so "I paid" still knows the exact amount after a restart.
+Pressing **Pay** again on the same item in that week (after closing the sheet or reloading the
+page) opens the same sheet with the same amount, unless the price or address has changed.
 
 - One payment is limited to 20 USDC by default (`"payments": {"max_usdc": "40"}` in
   `client.json` changes it).

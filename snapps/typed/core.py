@@ -22,6 +22,7 @@ import os
 import re
 import secrets
 import shutil
+import sys
 import threading
 import time
 import urllib.error
@@ -183,12 +184,7 @@ class Core:
         # Payment sheets the buyer opened, kept on disk so "I paid" still knows the order's exact
         # amount after the app restarts.
         self.pending_p = self.dir / "pending_pay.json"
-        try:
-            self.pending_pay = json.loads(self.pending_p.read_text())
-            if not isinstance(self.pending_pay, dict):
-                self.pending_pay = {}
-        except (OSError, ValueError):
-            self.pending_pay = {}
+        self.pending_pay = self._load_pending()
         self.blob_cache = self.dir / "blobs"
         self.blob_cache.mkdir(exist_ok=True)
         # mail: same identity as posting (author.key); sealed store under <data>/mail
@@ -620,6 +616,22 @@ class Core:
         if not l.get("payable"):
             raise F.FormatError("this listing can't be paid: " + (l.get("note") or "seller needs to update"))
         cid, to = l["chain_id"], l["pay_to"]
+        with self.lock:
+            old = self._open_sheet(name, l, cid, to)
+        if old:
+            # Pay again on the same item (sheet closed, page reloaded): same sheet, same amount, so a
+            # payment already sent still matches the order.
+            tok, d = old
+            amount = d["amount"] if l["currency"] == "USDC" else l["price"]
+            when = time.strftime("%Y-%m-%d %H:%M", time.localtime(d["at"]))
+            return {"ok": True, "token": tok, "qr": PI.have_qr(), "reused": True, "sheet": {
+                "network": PI.label(cid), "chain_id": cid, "to": to, "amount": amount, "currency": l["currency"],
+                "token_address": PI.USDC[cid] if l["currency"] == "USDC" else None, "uri": d["uri"],
+                "item": l["title"], "seller": l["seller_label"], "listing": l["id"], "testnet": cid in PI.TESTNETS,
+                "opened": d["at"],
+                "note": f"You opened this payment on {when}; the amount is the same. If you already paid it, "
+                        "press I paid and paste the transaction. Otherwise send exactly this amount on "
+                        + PI.label(cid) + ". You pay the network fee. Payments are final. This app never sends funds."}}
         if l["currency"] == "USDC":
             units = PI.order_units(PI.usdc_units(l["price"]))   # this order's own exact amount
             cap = PI.max_units(self.config)
@@ -635,8 +647,9 @@ class Core:
         with self.lock:
             keep = {k: v for k, v in self.pending_pay.items() if self.clock() - v.get("at", 0) < PENDING_PAY_S}
             keep = dict(sorted(keep.items(), key=lambda kv: kv[1].get("at", 0))[-(PENDING_PAY_MAX - 1):])
-            keep[tok] = {"collection": name, "listing": l["id"], "chain_id": cid, "uri": uri,
-                         "amount": amount if l["currency"] == "USDC" else None, "at": self.clock()}
+            keep[tok] = {"collection": name, "listing": l["id"], "chain_id": cid, "uri": uri, "to": to,
+                         "amount": amount if l["currency"] == "USDC" else None,
+                         "price": l["price"], "at": self.clock()}
             self.pending_pay = keep
             self._save_pending()
         return {"ok": True, "token": tok, "qr": PI.have_qr(), "sheet": {
@@ -645,6 +658,50 @@ class Core:
             "listing": l["id"], "testnet": cid in PI.TESTNETS,
             "note": "Pay from your own wallet: send exactly this amount on " + PI.label(cid)
                     + ". You pay the network fee. Payments are final. This app never sends funds."}}
+
+    def _load_pending(self):
+        """pending_pay.json, skipping entries that aren't usable (say the file was edited by hand)."""
+        try:
+            raw = json.loads(self.pending_p.read_text())
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError) as e:
+            print(f"snapps: ignoring {self.pending_p.name}: {e.__class__.__name__}", file=sys.stderr, flush=True)
+            return {}
+        if not isinstance(raw, dict):
+            print(f"snapps: ignoring {self.pending_p.name}: not an object", file=sys.stderr, flush=True)
+            return {}
+        out = {}
+        for k, v in raw.items():
+            if isinstance(v, dict) and isinstance(v.get("collection"), str) and isinstance(v.get("listing"), str) \
+                    and isinstance(v.get("uri"), str) and isinstance(v.get("at"), (int, float)) \
+                    and not isinstance(v.get("at"), bool):
+                out[k] = v
+            else:
+                print(f"snapps: skipping a bad entry in {self.pending_p.name}", file=sys.stderr, flush=True)
+        return out
+
+    def _open_sheet(self, name, l, cid, to):
+        """The newest unexpired payment sheet for this item in this store, if its terms still hold."""
+        now = self.clock()
+        best = None
+        for k, v in self.pending_pay.items():
+            if v.get("collection") != name or v.get("listing") != l["id"] or v.get("chain_id") != cid \
+                    or now - v.get("at", 0) >= PENDING_PAY_S:
+                continue
+            if str(v.get("to") or ("" if str(to).lower() not in v["uri"].lower() else to)).lower() != str(to).lower():
+                continue
+            try:
+                if l["currency"] == "USDC":
+                    if not v.get("amount") or not PI.order_amount_ok(PI.usdc_units(l["price"]), PI.usdc_units(v["amount"])):
+                        continue
+                elif v.get("price") != l["price"]:
+                    continue
+            except PI.PayError:
+                continue
+            if best is None or v["at"] > best[1]["at"]:
+                best = (k, v)
+        return best
 
     def _save_pending(self):
         tmp = self.pending_p.with_suffix(f".{threading.get_ident()}.tmp")
