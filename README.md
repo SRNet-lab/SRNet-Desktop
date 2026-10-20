@@ -238,7 +238,8 @@ Details: [client-cli/README.md](client-cli/README.md).
 ## Files
 
 Uploads are encrypted by default (ChaCha20-Poly1305, a new random key per file, sizes padded to
-buckets, name and type sealed inside). The host stores only ciphertext. Choose per file:
+buckets, name and type sealed inside). With encryption on, the host stores only ciphertext.
+Choose per file:
 
 - **Only me and people I choose** (default): the file key is sealed to each person's key from
   their SRNet profile. Add people later, or approve someone's access request.
@@ -255,10 +256,10 @@ quota per uploader. The client reads the limit from the host's signed policy and
 larger file before uploading anything. Big files go up in 1 MiB chunks. If an upload is
 interrupted, uploading the same file again continues where it stopped.
 
-**Coming soon:** file drop hosts will be able to turn off public hosting, so they only store
-encrypted files and can't read the files they hold. The client will also let you move or copy
-all your files from one host to another, and keep them synced across several hosts so they stay
-available if one goes down.
+**Coming soon:** file drop hosts will be able to turn off public hosting, so they hold only
+encrypted files they can't read. The client will also let you move or copy all your files from
+one host to another, and keep them synced across several hosts so they stay available if one
+goes down.
 
 ## Moderation, room headers and pins
 
