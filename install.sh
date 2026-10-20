@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# SRNet client installer for Linux and macOS. Installs into your user account only (no sudo).
+# SRNet client installer for Linux and macOS. Installs into your user account only (the exits
+# add-on's one-time Session Router setup asks sudo once).
 #   ./install.sh               install or upgrade
 #   ./install.sh --with-exits  also install the exits add-on (buy time on an exit, connect through it)
 #   ./install.sh --uninstall
@@ -13,13 +14,21 @@ for a in "$@"; do
   case "$a" in
     --uninstall) UNINSTALL=1;;
     --with-exits) WITH_EXITS=1;;
-    -h|--help) sed -n '2,5p' "$0"; exit 0;;
+    -h|--help) sed -n '2,6p' "$0"; exit 0;;
     *) echo "install.sh: unknown option $a (see --help)" >&2; exit 2;;
   esac
 done
 
+RC_MARK="# srnet: ~/.local/bin on PATH (added by SRNet-Desktop install.sh)"
 if [ "$UNINSTALL" = 1 ]; then
   rm -rf "$PREFIX" "$BIN/srnet" "$BIN/srnet-relayer" "$HOME/.local/share/applications/srnet-ui.desktop" "$HOME/.local/share/applications/srnet-open.desktop"
+  for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    if [ -f "$rc" ] && grep -qF "$RC_MARK" "$rc"; then
+      awk -v m="$RC_MARK" 'skip { skip = 0; next } $0 == m { skip = 1; next } { print }' "$rc" > "$rc.srnet-tmp" \
+        && cat "$rc.srnet-tmp" > "$rc"
+      rm -f "$rc.srnet-tmp"
+    fi
+  done
   echo "Removed the SRNet client. Your settings in ~/.srnet were left in place."
   exit 0
 fi
@@ -94,6 +103,19 @@ if [ "$WITH_EXITS" = 1 ] && [ "$(uname -s)" = "Linux" ] && [ "${SRNET_SKIP_ROUTE
   fi
 fi
 
+# New terminals: put $BIN on PATH in ~/.bashrc (and ~/.zshrc if there is one), once.
+RC_DONE=""
+if [ "$BIN" = "$HOME/.local/bin" ]; then RC_PATH='$HOME/.local/bin'; else RC_PATH="$BIN"; fi
+for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+  if [ "$rc" = "$HOME/.zshrc" ] && [ ! -f "$rc" ]; then continue; fi
+  if [ -f "$rc" ] && grep -qF "$RC_MARK" "$rc"; then continue; fi
+  [ -d "$HOME" ] || continue
+  if printf '\n%s\ncase ":$PATH:" in *":%s:"*) ;; *) export PATH="%s:$PATH";; esac\n' \
+       "$RC_MARK" "$RC_PATH" "$RC_PATH" >> "$rc" 2>/dev/null; then
+    RC_DONE="$RC_DONE ${rc/#$HOME/~}"
+  fi
+done
+
 echo
 echo "Done. Next steps:"
 case ":$PATH:" in
@@ -108,9 +130,10 @@ case ":$PATH:" in
       echo "    export PATH=\"$BIN:\$PATH\""
     fi
     echo
-    echo "  New terminals after your next login pick it up on Ubuntu automatically."
+    echo "  New terminals have it already."
     ;;
 esac
+[ -n "$RC_DONE" ] && echo "  Added $BIN to PATH for new terminals in:$RC_DONE"
 echo "  srnet doctor       check your setup (Session Router, DNS); writes a report"
 echo "  srnet ui           open the app in your browser"
 if command -v session-router >/dev/null 2>&1 || [ -x /usr/bin/session-router ] || \

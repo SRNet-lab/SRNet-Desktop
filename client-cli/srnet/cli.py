@@ -274,7 +274,7 @@ def main(argv=None) -> int:
 
     if _under_sudo():
         print("srnet runs as your own user, not with sudo: your wallet, paid time and settings live in "
-              "your ~/.srnet, and the few steps that need root (srnet connect / disconnect) ask sudo "
+              "your ~/.srnet, and the few steps that need root (srnet connect / disconnect / setup-router) ask sudo "
               "for your password themselves. Run it again without sudo, e.g.: srnet "
               + " ".join(argv if argv is not None else sys.argv[1:]), file=sys.stderr)
         return 2

@@ -83,13 +83,14 @@ sudo apt update
 cd /tmp
 curl -fLO https://github.com/SRNet-lab/Session-Router-SRNet/releases/download/v1.1.0-srnet6/session-router-srnet_1.1.0+srnet6_amd64.deb
 echo "5c1c9b553b25649657f9f8e3ae0431aa3fe0534c82e65214588c728307bf3237  session-router-srnet_1.1.0+srnet6_amd64.deb" | sha256sum -c \
+  && echo "checksum OK" \
   && sudo apt install -y ./session-router-srnet_1.1.0+srnet6_amd64.deb session-router-client \
   && sudo apt-mark hold session-router-srnet session-router-client
 cd ~
 ```
 
-`sha256sum -c` must print `OK`; if it does not, nothing gets installed (the `&&` stops there):
-re-download and run the three chained lines again. The hold keeps apt from
+You should see `checksum OK` before apt starts. If the check fails, sha256sum prints `FAILED` and
+nothing gets installed (the `&&` stops there): re-download and run the chained lines again. The hold keeps apt from
 swapping the stock router binary back in on an upgrade. (If you had installed the stock
 `session-router-bin` before, apt may now list `libsessionrouter1.1`, `liboxen-quic1.12` and similar
 as no longer required. That is fine: the SRNet build does not use them, so `sudo apt autoremove`
@@ -145,16 +146,20 @@ export PATH="$HOME/.local/bin:$PATH"
 cd ~
 ```
 
-The installer needs no root. It puts everything under `~/.local/share/srnet-client` and adds
-`srnet` to `~/.local/bin`. `~/SRNet-Desktop/install.sh --uninstall` removes it and keeps your
-settings in `~/.srnet`. The `export PATH` line is only needed in this terminal; Ubuntu adds
-`~/.local/bin` to new logins automatically. Running `./install.sh` again later upgrades the
-client and, if it is installed, the exits add-on.
+The installer puts everything under `~/.local/share/srnet-client`, adds `srnet` to
+`~/.local/bin` and adds `~/.local/bin` to your PATH for new terminals in `~/.bashrc` (and
+`~/.zshrc` if you have one; once, it says so). The `export PATH` line is only needed in the
+terminal you installed from. With `--with-exits` it also sets up Session Router for exits, which
+asks for your sudo password once (step 5); everything else needs no root.
+`~/SRNet-Desktop/install.sh --uninstall` removes it (including that PATH line) and keeps your
+settings in `~/.srnet`. Running `./install.sh` again later upgrades the client and, if it is
+installed, the exits add-on.
 
 ### 4. First run
 
 ```sh
-srnet doctor      # check Session Router, DNS, the demo hosts (and the exits add-on, if installed)
+srnet doctor      # checks Session Router, .sesh DNS, that the demo lobby answers, the clock
+                  # and free disk (and the exits add-on, if installed); writes a report
 srnet ui          # open the app in your browser
 ```
 

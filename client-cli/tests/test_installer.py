@@ -103,6 +103,32 @@ class InstallSh(unittest.TestCase):
         self.run_install(modules="srnet_exits")
         self.assertEqual(self.router_calls(), [])
 
+    def test_path_goes_into_bashrc_once_and_zshrc_only_if_present(self):
+        home = self.tmp / "home"
+        home.mkdir(exist_ok=True)
+        (home / ".bashrc").write_text("# mine\nalias ll='ls -l'\n")
+        r = self.run_install()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        rc = (home / ".bashrc").read_text()
+        self.assertTrue(rc.startswith("# mine\nalias ll='ls -l'\n"))
+        self.assertEqual(rc.count("added by SRNet-Desktop install.sh"), 1)
+        self.assertIn(f'export PATH="{self.bin}:$PATH"', rc)
+        self.assertIn("Added", r.stdout)
+        self.assertFalse((home / ".zshrc").exists())
+        # the line works in a fresh bash
+        out = subprocess.run(["bash", "-c", f"PATH=/usr/bin:/bin; . {home / '.bashrc'}; echo $PATH"],
+                             capture_output=True, text=True).stdout
+        self.assertIn(str(self.bin), out)
+        (home / ".zshrc").write_text("")
+        r = self.run_install()
+        self.assertEqual((home / ".bashrc").read_text(), rc, "not added twice")
+        self.assertEqual((home / ".zshrc").read_text().count("added by SRNet-Desktop install.sh"), 1)
+        r = self.run_install("--uninstall")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("SRNet-Desktop install.sh", (home / ".bashrc").read_text())
+        self.assertIn("alias ll='ls -l'", (home / ".bashrc").read_text())
+        self.assertNotIn("SRNet-Desktop install.sh", (home / ".zshrc").read_text())
+
     def test_old_install_with_wallet_libs_gets_a_clean_venv(self):
         self.run_install()
         marker = self.prefix / "venv" / "old-file"
