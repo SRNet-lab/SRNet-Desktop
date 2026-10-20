@@ -45,6 +45,7 @@ class FakeChain:
 
     def _mine(self, tx, block, status, ts, logs):
         bh = "0x" + f"{block:064x}"
+        self.txs[tx]["blockNumber"] = h(block)
         self.receipts[tx] = {"transactionHash": tx, "blockNumber": h(block), "blockHash": bh,
                              "status": h(status), "logs": logs}
         self.blocks[block] = {"hash": bh, "timestamp": h(ts), "number": h(block)}
@@ -216,6 +217,21 @@ class EthCheck(unittest.TestCase):
         self.assertEqual(r["state"], "bad")
         self.assertIn("before this donation was opened", r["why"])
 
+    def test_receipt_for_another_tx_is_ignored(self):
+        self.both("add_eth", tx(1), TO, self.d["units"])
+        for c in (self.a, self.b):        # both RPCs agree on the same wrong receipt
+            c.receipts[tx(1)] = dict(c.receipts[tx(1)], transactionHash=tx(9))
+        self.assertEqual(P.check([self.a, self.b], self.d, TO)["state"], "pending")
+
+    def test_tx_and_receipt_blocks_must_match(self):
+        self.both("add_eth", tx(1), TO, self.d["units"])
+        for c in (self.a, self.b):
+            c.txs[tx(1)]["blockNumber"] = h(970)
+        self.assertEqual(P.check([self.a, self.b], self.d, TO)["state"], "pending")
+        for c in (self.a, self.b):
+            del c.txs[tx(1)]["blockNumber"]
+        self.assertEqual(P.check([self.a, self.b], self.d, TO)["state"], "pending")
+
     def test_rpc_answering_for_another_tx_is_ignored(self):
         self.both("add_eth", tx(1), TO, self.d["units"])
         self.a.txs[tx(1)] = dict(self.a.txs[tx(1)], hash=tx(9))
@@ -229,6 +245,14 @@ class UsdcCheck(unittest.TestCase):
 
     def test_paid(self):
         self.c.add_usdc(tx(1), P.USDC_TOKENS[8453].lower(), TO, 110_423)   # logs use lower case
+        self.assertEqual(P.check([self.c], self.d, TO)["state"], "paid")
+
+    def test_recipient_topic_upper_bytes_must_be_zero(self):
+        self.c.add_usdc(tx(1), P.USDC_TOKENS[8453], TO, 110_423)
+        lg = self.c.receipts[tx(1)]["logs"][0]
+        lg["topics"][2] = "0x" + "ff" * 12 + TO.lower()[2:]
+        self.assertIn("no USDC transfer", P.check([self.c], self.d, TO)["why"])
+        lg["topics"][2] = "0x" + "00" * 12 + TO[2:]          # upper-case hex in the address part is fine
         self.assertEqual(P.check([self.c], self.d, TO)["state"], "paid")
 
     def test_fake_token_wrong_recipient_wrong_amount(self):
@@ -250,12 +274,13 @@ class AppFlow(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def pay(self, v, t, units=None):
+    def pay(self, v, t, units=None, ts=None):
+        ts = ts if ts is not None else v["created"] + 60
         for c in self.chains[v["chain"]]:
             if v["asset"] == "eth":
-                c.add_eth(t, TO, units or v["units"])
+                c.add_eth(t, TO, units or v["units"], ts=ts)
             else:
-                c.add_usdc(t, P.USDC_TOKENS[v["chain"]], TO, units or v["units"])
+                c.add_usdc(t, P.USDC_TOKENS[v["chain"]], TO, units or v["units"], ts=ts)
 
     def test_open_donations_never_share_an_amount(self):
         seen = set()
@@ -303,13 +328,66 @@ class AppFlow(unittest.TestCase):
         self.assertRegex(r["why"], "underpaid|does not match")
         self.assertEqual(self.app.ledger.get(v2["id"])["status"], "open")
 
-    def test_expired_and_bad_input(self):
+    def test_bad_input(self):
         v = self.app.create("eth", 8453, "0.001", "a")
         self.assertIn("transaction hash", self.app.check(v["id"], "0x1234", "a")["why"])
         self.assertIn("unknown", self.app.check("a" * 26, tx(1), "a")["why"])
-        self.now[0] += P.OPEN_S + 1
-        self.pay(v, tx(7))
-        self.assertIn("expired", self.app.check(v["id"], tx(7), "a")["why"])
+
+    def test_paid_in_time_checked_late(self):
+        v = self.app.create("eth", 8453, "0.001", "a")
+        self.pay(v, tx(7), ts=v["created"] + P.OPEN_S - 10)    # paid on day 7
+        self.now[0] += 20 * 86400                                # checked on day 20
+        self.assertEqual(self.app.check(v["id"], tx(7), "a")["state"], "paid")
+
+    def test_paid_after_the_window(self):
+        v = self.app.create("eth", 8453, "0.001", "a")
+        self.pay(v, tx(7), ts=v["created"] + P.OPEN_S + 1)
+        self.now[0] += P.OPEN_S + 100
+        r = self.app.check(v["id"], tx(7), "a")
+        self.assertEqual(r["state"], "bad")
+        self.assertIn("after this donation's 7 days", r["why"])
+        # just inside the early edge still counts
+        v2 = self.app.create("eth", 8453, "0.002", "b")
+        self.pay(v2, tx(8), ts=v2["created"] - P.EARLY_SLACK_S)
+        self.assertEqual(self.app.check(v2["id"], tx(8), "b")["state"], "paid")
+
+    def test_checks_per_donation_are_limited(self):
+        v = self.app.create("eth", 1, "0.001", "a")
+        for i in range(3):
+            self.assertEqual(self.app.check(v["id"], tx(100 + i), f"caller{i}")["state"], "pending")
+        r = self.app.check(v["id"], tx(103), "caller9")     # a 4th check within a minute, from anyone
+        self.assertIn("checked a few times just now", r["why"])
+        self.now[0] += 61
+        self.assertIn("not found", self.app.check(v["id"], tx(104), "caller9")["why"])
+
+    def test_answers_cached_for_30_seconds(self):
+        v1 = self.app.create("eth", 1, "0.001", "a")
+        v2 = self.app.create("eth", 1, "0.001", "b")
+        calls = lambda: sum(c.calls for c in self.chains[1])  # noqa: E731
+        self.app.check(v1["id"], tx(50), "a")
+        n = calls()
+        self.app.check(v2["id"], tx(50), "b")            # same (chain, tx): no new RPC calls
+        self.assertEqual(calls(), n)
+        self.now[0] += 31
+        self.app.check(v2["id"], tx(50), "b")
+        self.assertGreater(calls(), n)
+
+    def test_busy_still_shows_address(self):
+        S.MAX_OPEN, old = 2, S.MAX_OPEN
+        try:
+            self.app.create("eth", 1, "0.001", "a")
+            self.app.create("eth", 1, "0.001", "b")
+            with self.assertRaises(P.Busy):
+                self.app.create("eth", 1, "0.001", "c")
+        finally:
+            S.MAX_OPEN = old
+        page = S.any_html(self.app, "usdc", 8453, "too many open donations right now").decode()
+        self.assertIn("this page just can't confirm it right now", page)
+        self.assertIn(TO, page)
+        self.assertIn(P.USDC_TOKENS[8453], page)
+        self.assertEqual(self.app.any_amount("eth", 1)["uri"], f"ethereum:{TO}@1")
+        self.assertEqual(P.any_uri("usdc", 42161, TO),
+                         f"ethereum:{P.USDC_TOKENS[42161]}@42161/transfer?address={TO}")
 
     def test_rate_limits(self):
         for _ in range(20):
@@ -374,6 +452,69 @@ class Http(unittest.TestCase):
         self.assertEqual(code, 400)
         code, _, _ = self.req("/../etc/passwd")
         self.assertEqual(code, 404)
+
+    def raw(self, data: bytes) -> bytes:
+        import socket
+        s = socket.create_connection(("127.0.0.1", self.srv.server_address[1]), timeout=5)
+        s.sendall(data)
+        out = b""
+        try:
+            while True:
+                b = s.recv(65536)
+                if not b:
+                    break
+                out += b
+        except socket.timeout:
+            pass
+        s.close()
+        return out
+
+    def test_oversized_body_closes_connection(self):
+        before = len(self.app.ledger.d["donations"])
+        inner = (b'POST /donate/api/new HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n'
+                 b'Content-Length: 50\r\n\r\n{"asset":"usdc","chain_id":8453,"amount":"1"}    ')
+        body = inner + b" " * (9000 - len(inner))
+        out = self.raw(b"POST /donate/api/new HTTP/1.1\r\nHost: x\r\nContent-Length: 9000\r\n\r\n" + body)
+        self.assertEqual(out.count(b"HTTP/1.1 "), 1, out[:300])
+        self.assertIn(b"413", out.split(b"\r\n")[0])
+        self.assertIn(b"Connection: close", out)
+        self.assertEqual(len(self.app.ledger.d["donations"]), before)
+
+    def test_bad_request_closes_connection(self):
+        out = self.raw(b"POST /donate/api/new HTTP/1.1\r\nHost: x\r\nContent-Length: 3\r\n\r\n[1]"
+                       b"GET /donate/ HTTP/1.1\r\nHost: x\r\n\r\n")
+        self.assertEqual(out.count(b"HTTP/1.1 "), 1)
+        self.assertIn(b"400", out.split(b"\r\n")[0])
+        out = self.raw(b"GET /donate/ HTTP/1.1\r\nHost: x\r\nContent-Length: 40\r\n\r\n"
+                       b"GET /donate/style.css HTTP/1.1\r\nHost: x\r\n\r\n")
+        self.assertEqual(out.count(b"HTTP/1.1 "), 1)
+        self.assertIn(b"Connection: close", out)
+        self.assertEqual(S.make_handler(self.app).timeout, 30)
+
+    def test_busy_api_and_qr(self):
+        rl = self.app.create_rl
+        self.app.create_rl = S.RateLimit(0, 0, 3600)
+        try:
+            code, _, body = self.req("/api/new", json.dumps({"asset": "eth", "chain_id": 1, "amount": "0.01"}).encode())
+            self.assertEqual(code, 503)
+            d = json.loads(body)
+            self.assertTrue(d["busy"])
+            self.assertEqual(d["any_amount"]["to"], TO)
+            code, _, body = self.req("/new", b"what=usdc%3A42161&amount=1", "application/x-www-form-urlencoded")
+            self.assertEqual(code, 200)
+            self.assertIn("can't confirm it right now", body.decode())
+        finally:
+            self.app.create_rl = rl
+        code, _, _ = self.req("/any/usdc/1/qr.svg")         # not offered
+        self.assertEqual(code, 404)
+
+    def test_wording(self):
+        _, _, body = self.req("/")
+        self.assertIn("up to 0.01 USDC (or 0.00001 ETH) more than", body.decode())
+        self.assertNotIn("billionths", body.decode())
+        doc = (Path(__file__).resolve().parent.parent / "docs" / "DONATE.md").read_text()
+        self.assertNotIn("billionths", doc)
+        self.assertNotIn("a few minutes", doc)
 
     def test_form_flow_escapes_input(self):
         code, _, body = self.req("/new", b"what=usdc%3A8453&amount=%3Cscript%3E",

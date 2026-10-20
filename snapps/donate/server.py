@@ -77,6 +77,14 @@ class Ledger:
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp, self.path)
+            try:   # make the rename itself durable
+                dfd = os.open(self.path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(dfd)
+                finally:
+                    os.close(dfd)
+            except OSError:
+                pass
         except BaseException:
             try:
                 os.unlink(tmp)
@@ -90,7 +98,9 @@ class Ledger:
             del ds[k]
 
     def is_open(self, v, now) -> bool:
-        return v["status"] != "paid" and now - v["created"] < P.OPEN_S
+        # The amount stays reserved a little past the 7 days, so a later donation that reuses it opens
+        # more than EARLY_SLACK_S after any payment that could still count for this one.
+        return v["status"] != "paid" and now - v["created"] < P.OPEN_S + P.EARLY_SLACK_S
 
     def open(self, asset: str, chain: int, base: int) -> dict:
         with self.lock:
@@ -98,7 +108,7 @@ class Ledger:
             self._prune(now)
             live = [v for v in self.d["donations"].values() if self.is_open(v, now)]
             if len(live) >= MAX_OPEN:
-                raise P.AmountError("too many open donations right now; try again later")
+                raise P.Busy("too many open donations right now")
             taken = {v["units"] for v in live if v["asset"] == asset and v["chain"] == chain}
             units = P.unique_units(asset, base, taken)
             did = new_id()
@@ -171,6 +181,8 @@ class App:
         self.rpcs = rpcs or {c: [P.JsonRpc(u) for u in v["rpcs"]] for c, v in P.CHAINS.items()}
         self.create_rl = RateLimit(20, 300, 3600, clock)
         self.check_rl = RateLimit(20, 120, 600, clock)
+        self.donation_rl = RateLimit(3, 10**9, 60, clock)   # checks per donation
+        self.cache = P.TxCache(30, clock=clock)
         self.check_locks = {c: threading.Lock() for c in self.rpcs}
 
     # ---- actions shared by the HTML and JSON views ----
@@ -183,7 +195,7 @@ class App:
             raise P.AmountError("that asset isn't offered on that network")
         base = P.parse_amount(amount, asset)
         if not self.create_rl.allow(who):
-            raise P.AmountError("too many new donations from you just now; try again later")
+            raise P.Busy("too many new donations just now")
         return self.ledger.open(asset, chain, base)
 
     def sheet(self, v: dict) -> dict:
@@ -201,6 +213,15 @@ class App:
             out["last_check"] = v["last_check"]
         return out
 
+    def any_amount(self, asset: str, chain: int) -> dict:
+        """Address and QR without an exact amount, for when no new donation can be opened."""
+        out = {"network": P.CHAINS[chain]["label"], "chain_id": chain, "asset": P.ASSETS[asset]["name"],
+               "to": self.pay_to, "uri": P.any_uri(asset, chain, self.pay_to),
+               "note": "send any amount; this page can't confirm it right now"}
+        if asset == "usdc":
+            out["token"] = P.USDC_TOKENS[chain]
+        return out
+
     def check(self, did: str, tx: str, who: str) -> dict:
         v = self.ledger.get(did)
         if not v:
@@ -210,16 +231,18 @@ class App:
         tx = str(tx or "").strip()
         if not P.TX_RE.match(tx):
             return {"state": "bad", "why": "paste the transaction hash: 0x and 64 hex characters"}
-        if not self.ledger.is_open(v, self.clock()):
-            return {"state": "bad", "why": "this donation expired; open a new one"}
+        # No expiry refusal here: a payment mined within the donation's 7 days still counts when it is
+        # checked later (the chain check enforces the window).
         with self.ledger.lock:
             other = self.ledger.d["used_tx"].get(f"{v['chain']}:{tx.lower()}")
         if other and other != did:
             return {"state": "bad", "why": "that transaction was already used for another donation"}
+        if not self.donation_rl.allow(did):
+            return {"state": "pending", "why": "this donation was checked a few times just now; try again in a minute"}
         if not self.check_rl.allow(who):
             return {"state": "pending", "why": "too many checks just now; try again in a few minutes"}
         with self.check_locks[v["chain"]]:   # one check per chain at a time keeps the public RPCs happy
-            res = P.check(self.rpcs[v["chain"]], dict(v, tx=tx), self.pay_to, self.quorum)
+            res = P.check(self.rpcs[v["chain"]], dict(v, tx=tx), self.pay_to, self.quorum, self.cache)
         if res["state"] == "paid":
             got = self.ledger.mark_paid(did, tx, res)
             if got["state"] != "paid":
@@ -270,8 +293,8 @@ def index_html(app: App, err: str = "", form: dict | None = None) -> bytes:
             f"<p><label><b>Amount</b><br><input type=\"text\" name=\"amount\" inputmode=\"decimal\" "
             f"value=\"{E(form.get('amount', ''))}\" placeholder=\"for example 5 or 0.002\" required></label><br>"
             f"<small>{E(lim)}.</small></p><p><button type=\"submit\">Show how to pay</button></p></form>"
-            "<p><small>The next page shows an exact amount, a little above what you typed (a few millionths "
-            "of a USDC or billionths of an ETH). That small extra is how this page tells your donation apart "
+            "<p><small>The next page shows an exact amount, up to 0.01 USDC (or 0.00001 ETH) more than "
+            "you typed. That small extra is how this page tells your donation apart "
             "from others, so please send exactly that amount. You pay from your own wallet and you pay the "
             "network fee.</small></p>")
     return page("Donate to SRNet", body)
@@ -316,12 +339,31 @@ def have_qr() -> bool:
         return False
 
 
+def any_html(app: App, asset: str, chain: int, why: str) -> bytes:
+    s = app.any_amount(asset, chain)
+    qr = (f"<p><img src=\"{PREFIX}/any/{asset}/{chain}/qr.svg\" alt=\"QR code for the donation address\"></p>"
+          if have_qr() else "")
+    tok = (f"<p>Token: USDC <code>{E(s['token'])}</code> (the official one on {E(s['network'])}). "
+           "Send the token, not ETH.</p>") if "token" in s else \
+        f"<p>Send native ETH on {E(s['network'])}, not a token.</p>"
+    body = (f"<h1>Donate {E(s['asset'])} on {E(s['network'])}</h1>"
+            f"<p class=\"warn\">This page can't open a new donation right now ({E(why)}). You can still send "
+            "any amount to the address below; this page just can't confirm it right now.</p><div class=\"box\">"
+            f"<p>Send any amount to<br><code>{E(s['to'])}</code><br>on <b>{E(s['network'])}</b> "
+            f"(chain id {s['chain_id']}).</p>" + tok + qr +
+            f"<p><a href=\"{E(s['uri'])}\">Open in a wallet</a> <small class=\"mono\">{E(s['uri'])}</small></p></div>"
+            "<p><small>Payments are final.</small></p>")
+    return page("Donate to SRNet", body)
+
+
 NOT_FOUND = page("Not found", f"<p>No such donation (it may have expired). <a href=\"{PREFIX}/\">Start again</a>.</p>")
 
 
 def make_handler(app: App):
     class H(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
+        timeout = 30   # an idle or slow connection doesn't hold a thread forever
+
         def version_string(self):
             return "srnet-donate"
 
@@ -341,6 +383,10 @@ def make_handler(app: App):
             self.send_header("Cache-Control", "no-store")
             for k, v in (extra or {}).items():
                 self.send_header(k, v)
+            if code in (400, 413):
+                # The request may not have been read to its end; never parse what's left as a new request.
+                self.close_connection = True
+                self.send_header("Connection", "close")
             self.end_headers()
             if self.command != "HEAD":
                 self.wfile.write(body)
@@ -367,6 +413,8 @@ def make_handler(app: App):
             return p[len(PREFIX):].strip("/")
 
         def do_GET(self):
+            if self.headers.get("Content-Length", "0").strip() not in ("", "0") or self.headers.get("Transfer-Encoding"):
+                return self.send(400, b"bad request", "text/plain")   # a GET with a body: don't guess
             p = self.path_parts()
             if p is None:
                 return self.send(404, b"not found", "text/plain")
@@ -374,6 +422,10 @@ def make_handler(app: App):
                 return self.send(200, index_html(app))
             if p == "style.css":
                 return self.send(200, CSS, "text/css")
+            m = re.fullmatch(r"any/(eth|usdc)/([0-9]{1,6})/qr\.svg", p)
+            if m and P.offered(m.group(1), int(m.group(2))):
+                svg = qr_svg(P.any_uri(m.group(1), int(m.group(2)), app.pay_to))
+                return self.send(200, svg, "image/svg+xml") if svg else self.send(404, b"no qr", "text/plain")
             m = re.fullmatch(r"(api/)?d/([a-z2-7]{26})(/qr\.svg)?", p)
             if not m:
                 return self.send(404, b"not found", "text/plain")
@@ -393,6 +445,8 @@ def make_handler(app: App):
 
         def do_POST(self):
             p = self.path_parts()
+            if self.headers.get("Transfer-Encoding"):
+                return self.send(400, b"bad request", "text/plain")
             raw = self.body()
             if p is None:
                 return self.send(404, b"not found", "text/plain")
@@ -417,6 +471,10 @@ def make_handler(app: App):
                     asset, _, chain = a.get("what", "").partition(":")
                 try:
                     v = app.create(asset, chain, a.get("amount", ""), self.who())
+                except P.Busy as e:   # donating never gets blocked: show the plain address instead
+                    c = int(chain)
+                    return self.json(503, {"error": str(e), "busy": True, "any_amount": app.any_amount(asset, c)}) \
+                        if is_api else self.send(200, any_html(app, asset, c, str(e)))
                 except P.AmountError as e:
                     return self.json(400, {"error": str(e)}) if is_api else \
                         self.send(400, index_html(app, str(e), a))

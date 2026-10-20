@@ -1,10 +1,10 @@
 """Donation amounts and on-chain checks (read-only JSON-RPC, standard library only).
 
-Each donation gets its own exact amount: what the donor asked for plus a few millionths of a USDC
-(or a few billionths of an ETH). No two open donations on the same chain and asset share an amount,
+Each donation gets its own exact amount: what the donor asked for plus up to 0.01 USDC
+(or up to 0.00001 ETH). No two open donations on the same chain and asset share an amount,
 so a payment can be matched to its donation. A donation is marked paid only after its transaction is
 found on the right chain, sends exactly that amount to the payout address, succeeded, has enough
-confirmations, was mined after the donation was opened, and has not been used for another donation.
+confirmations, was mined within the donation's 7 days, and has not been used for another donation.
 Nothing here holds a key or sends a transaction.
 """
 from __future__ import annotations
@@ -51,6 +51,10 @@ class AmountError(ValueError):
     pass
 
 
+class Busy(AmountError):
+    """The page can't open a new donation right now (limits or slots); donating still works."""
+
+
 def offered(asset: str, chain: int) -> bool:
     return (asset, chain) in OPTIONS
 
@@ -83,7 +87,7 @@ def unique_units(asset: str, base: int, taken, rng=None) -> int:
             return u
     free = [base + i * step for i in range(1, TAG_MAX + 1) if base + i * step not in taken]
     if not free:
-        raise AmountError("too many open donations near this amount; try a slightly different amount")
+        raise Busy("too many open donations near this amount")
     return free[pick(len(free))]
 
 
@@ -101,6 +105,15 @@ def pay_uri(asset: str, chain: int, to: str, units: int) -> str:
     if asset == "eth":
         return f"ethereum:{to}@{chain}?value={int(units)}"
     return f"ethereum:{USDC_TOKENS[chain]}@{chain}/transfer?address={to}&uint256={int(units)}"
+
+
+def any_uri(asset: str, chain: int, to: str) -> str:
+    """EIP-681 link with the address (and token) but no amount: the wallet asks the donor how much."""
+    if not ADDR_RE.match(to):
+        raise AmountError("bad payout address")
+    if asset == "eth":
+        return f"ethereum:{to}@{chain}"
+    return f"ethereum:{USDC_TOKENS[chain]}@{chain}/transfer?address={to}"
 
 
 # ---- read-only JSON-RPC ----
@@ -143,9 +156,13 @@ def _topic_addr(t: str) -> str:
     return "0x" + str(t)[-40:].lower()
 
 
-def check_one(rpc, d: dict, to: str) -> dict:
-    """Ask one RPC about donation `d`'s transaction. Returns {"state": paid|pending|bad, ...}."""
-    chain, tx, asset, want = int(d["chain"]), d["tx"].lower(), d["asset"], int(d["units"])
+TOPIC_ADDR_RE = re.compile(r"^0x0{24}[0-9a-f]{40}$")
+
+
+def fetch_one(rpc, chain: int, tx: str) -> dict:
+    """What one RPC says about a transaction: the tx, its receipt, the block at the receipt's height
+    and the chain head. Raises RpcError if the RPC is on another chain or answers about another tx."""
+    tx = tx.lower()
     if getattr(rpc, "chain", None) is None:
         got = _int(rpc.call("eth_chainId"))
         if hasattr(rpc, "chain"):
@@ -156,15 +173,33 @@ def check_one(rpc, d: dict, to: str) -> dict:
         raise RpcError("RPC is on another chain")
     t = rpc.call("eth_getTransactionByHash", tx)
     if not t:
-        return {"state": "pending", "why": f"transaction not found on {CHAINS[chain]['label']} (yet). "
-                "If it was sent on another network, it won't show up here."}
-    if t.get("chainId") is not None and _int(t["chainId"]) != chain:
-        return {"state": "bad", "why": "that transaction is for another chain"}
+        return {"tx": None}
     if str(t.get("hash", "")).lower() != tx:
         raise RpcError("RPC answered for another transaction")
     r = rpc.call("eth_getTransactionReceipt", tx)
     if not r or r.get("blockNumber") is None:
+        return {"tx": t, "receipt": None}
+    if str(r.get("transactionHash", "")).lower() != tx:
+        raise RpcError("RPC sent the receipt of another transaction")
+    blk = rpc.call("eth_getBlockByNumber", hex(_int(r["blockNumber"])), False)
+    head = _int(rpc.call("eth_blockNumber"))
+    return {"tx": t, "receipt": r, "block": blk, "head": head}
+
+
+def judge(f: dict, d: dict, to: str) -> dict:
+    """Does what one RPC said pay donation `d`? Returns {"state": paid|pending|bad, ...}."""
+    chain, asset, want = int(d["chain"]), d["asset"], int(d["units"])
+    t, r = f.get("tx"), f.get("receipt")
+    if not t:
+        return {"state": "pending", "why": f"transaction not found on {CHAINS[chain]['label']} (yet). "
+                "If it was sent on another network, it won't show up here."}
+    if t.get("chainId") is not None and _int(t["chainId"]) != chain:
+        return {"state": "bad", "why": "that transaction is for another chain"}
+    if not r:
         return {"state": "pending", "why": "sent but not mined yet"}
+    bn, bh = _int(r["blockNumber"]), str(r.get("blockHash", "")).lower()
+    if t.get("blockNumber") is None or _int(t["blockNumber"]) != bn:
+        raise RpcError("transaction and receipt name different blocks")
     if _int(r.get("status", "0x0")) != 1:
         return {"state": "bad", "why": "that transaction failed"}
     to = to.lower()
@@ -178,9 +213,9 @@ def check_one(rpc, d: dict, to: str) -> dict:
         token = USDC_TOKENS[chain].lower()
         got = []
         for lg in r.get("logs") or []:
-            tp = lg.get("topics") or []
-            if (str(lg.get("address", "")).lower() == token and len(tp) == 3
-                    and str(tp[0]).lower() == TRANSFER_TOPIC and _topic_addr(tp[2]) == to):
+            tp = [str(x).lower() for x in (lg.get("topics") or [])]
+            if (str(lg.get("address", "")).lower() == token and len(tp) == 3 and tp[0] == TRANSFER_TOPIC
+                    and TOPIC_ADDR_RE.match(tp[2]) and _topic_addr(tp[2]) == to):
                 got.append(_int(lg.get("data") or "0x0"))
         if not got:
             return {"state": "bad", "why": "no USDC transfer to the donation address in that transaction"}
@@ -189,15 +224,15 @@ def check_one(rpc, d: dict, to: str) -> dict:
         return {"state": "bad", "why": ("underpaid" if low else "amount does not match") + ": got "
                 + ", ".join(fmt_units(g, asset) for g in got) + f" {ASSETS[asset]['name']}, expected "
                 + fmt_units(want, asset)}
-    bn, bh = _int(r["blockNumber"]), str(r.get("blockHash", "")).lower()
-    blk = rpc.call("eth_getBlockByNumber", hex(bn), False)
+    blk = f.get("block")
     if not blk or str(blk.get("hash", "")).lower() != bh:
         return {"state": "pending", "why": "the block holding it was replaced (reorg); check again shortly"}
     when = _int(blk["timestamp"])
     if when < int(d["created"]) - EARLY_SLACK_S:
         return {"state": "bad", "why": "that transaction was sent before this donation was opened"}
-    head = _int(rpc.call("eth_blockNumber"))
-    conf = head - bn + 1
+    if when > int(d["created"]) + OPEN_S:
+        return {"state": "bad", "why": "that transaction was sent after this donation's 7 days were up"}
+    conf = int(f["head"]) - bn + 1
     need = CHAINS[chain]["confirmations"]
     if conf < need:
         return {"state": "pending", "why": f"{max(conf, 0)} of {need} confirmations; check again shortly",
@@ -205,25 +240,67 @@ def check_one(rpc, d: dict, to: str) -> dict:
     return {"state": "paid", "from": sender, "block": bn, "block_hash": bh, "time": when, "confirmations": conf}
 
 
-def check(rpcs, d: dict, to: str, quorum: int | None = None) -> dict:
+def check_one(rpc, d: dict, to: str) -> dict:
+    """Ask one RPC about donation `d`'s transaction."""
+    return judge(fetch_one(rpc, int(d["chain"]), d["tx"]), d, to)
+
+
+class TxCache:
+    """What the RPCs said about a (chain, tx), kept briefly so repeated checks don't hit the RPCs."""
+
+    def __init__(self, ttl: float = 30, size: int = 2000, clock=None):
+        import threading
+        import time
+        self.ttl, self.size, self.clock = ttl, size, clock or time.time
+        self.d: dict = {}
+        self.lock = threading.Lock()
+
+    def get(self, key):
+        with self.lock:
+            hit = self.d.get(key)
+            return hit[1] if hit and self.clock() - hit[0] < self.ttl else None
+
+    def put(self, key, val):
+        with self.lock:
+            now = self.clock()
+            if len(self.d) >= self.size:
+                self.d = {k: v for k, v in self.d.items() if now - v[0] < self.ttl}
+                while len(self.d) >= self.size:
+                    self.d.pop(next(iter(self.d)))
+            self.d[key] = (now, val)
+
+
+def check(rpcs, d: dict, to: str, quorum: int | None = None, cache: TxCache | None = None) -> dict:
     """At least `quorum` RPCs (default: all of them) must answer, and every RPC that answers must
     agree, before a donation counts as paid. One RPC that lies or lags can delay a donation, never
     mark one paid on its own."""
     rpcs = list(rpcs)
     quorum = len(rpcs) if quorum is None else max(1, min(int(quorum), len(rpcs)))
-    def ask(rpc):
-        try:
-            return check_one(rpc, d, to)
-        except (RpcError, KeyError, TypeError, ValueError, AttributeError):
-            return None
+    chain, tx = int(d["chain"]), str(d["tx"]).lower()
+    facts = cache.get((chain, tx)) if cache else None
+    if facts is None:
+        def fetch(rpc):
+            try:
+                return fetch_one(rpc, chain, tx)
+            except (RpcError, KeyError, TypeError, ValueError, AttributeError):
+                return None
 
-    if len(rpcs) > 1:   # ask them side by side so one slow RPC doesn't double the wait
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(len(rpcs)) as ex:
-            got = list(ex.map(ask, rpcs))
-    else:
-        got = [ask(r) for r in rpcs]
-    answers = [a for a in got if a is not None]
+        if len(rpcs) > 1:   # ask them side by side so one slow RPC doesn't double the wait
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(len(rpcs)) as ex:
+                facts = list(ex.map(fetch, rpcs))
+        else:
+            facts = [fetch(r) for r in rpcs]
+        if cache:
+            cache.put((chain, tx), facts)
+    answers = []
+    for f in facts:
+        if f is None:
+            continue
+        try:
+            answers.append(judge(f, d, to))
+        except (RpcError, KeyError, TypeError, ValueError, AttributeError):
+            pass
     if not answers:
         return {"state": "pending", "why": "couldn't reach the chain right now; check again shortly"}
     bad = [a for a in answers if a["state"] == "bad"]
