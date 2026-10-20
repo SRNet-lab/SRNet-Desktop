@@ -168,11 +168,27 @@ Run `srnet` commands as yourself, never with `sudo`: the steps that need root as
 You need a little USDC on Arbitrum One or Base in any wallet (a phone wallet or an exchange
 withdrawal both work), plus a little ETH on the same network for the network fee.
 
+Once, before your first purchase, give Session Router a persistent key and turn off its
+blackhole routes:
+
+```sh
+sudo session-router-config -k /var/lib/session-router/client/client.key && sudo chown _session:_session /var/lib/session-router/client/client.key \
+  && sudo sed -i '/^\[network\]/a keyfile=/var/lib/session-router/client/client.key\nblackhole-routes=false' /etc/session-router/client.ini \
+  && sudo systemctl restart session-router-client
+```
+
+Paid exit time belongs to your `.sesh` address, and without a key file Session Router picks a new
+address at every restart, so the time would stop working after the next reboot. The blackhole
+routes would block all traffic while you are connected (on a remote machine that includes your
+SSH or RDP session); the kill switch of `srnet connect` keeps traffic from leaking instead.
+`srnet buy` and `srnet connect` refuse to start until this is done, and `srnet doctor` shows it.
+
 ```sh
 srnet exits                            # list sellers; note a seller id
 srnet buy --seller <id> --hours 1      # shows the address, exact amount and a QR code
                                        # pay it from your wallet; the client waits for the seller
-srnet connect <id>                     # route traffic and DNS through the exit (asks for sudo)
+srnet connect <id>                     # route traffic and DNS through the exit (asks for sudo itself;
+                                       # SSH/RDP sessions to this machine keep working)
 curl -s https://api.ipify.org; echo    # prints the exit's IP address
 srnet disconnect                       # back to your normal connection
 ```
