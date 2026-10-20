@@ -48,15 +48,33 @@ Get-ChildItem -Path $App -Recurse -Directory -Filter "__pycache__" | Remove-Item
 
 $Venv = Join-Path $Prefix "venv"
 $VPy = Join-Path $Venv "Scripts\python.exe"
+# Windows PowerShell 5.1 can turn a native program's stderr (pip notices, warnings) into a
+# terminating error under $ErrorActionPreference = "Stop". Run Python with "Continue" and judge
+# by the exit code only.
+function Invoke-Py {
+  $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+  try { & $VPy @args 2>&1 | ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { Write-Host $_.ToString() } else { $_ } } }
+  finally { $ErrorActionPreference = $old }
+}
+function Test-Module($name) {
+  if (-not (Test-Path $VPy)) { return $false }
+  Invoke-Py -c "import importlib.util,sys;sys.exit(0 if importlib.util.find_spec('$name') else 1)" | Out-Null
+  return ($LASTEXITCODE -eq 0)
+}
+$HadExits = Test-Module "srnet_exits"
+if ((Test-Module "eth_account") -or (Test-Path (Join-Path $Bin "srnet-relayer.cmd"))) {
+  # An install from before the split: start a clean venv so no wallet libraries are left in it.
+  Write-Host "Removing the old client's wallet libraries"
+  Remove-Item -Recurse -Force $Venv
+}
 if (-not (Test-Path $VPy)) { & $PyExe @PyArgs -m venv $Venv; if ($LASTEXITCODE) { throw "venv failed" } }
-& $VPy -m pip install --quiet --upgrade pip
-& $VPy -m pip install --quiet "$App\client-cli[qr]"
+Invoke-Py -m pip install --quiet --disable-pip-version-check --upgrade pip
+Invoke-Py -m pip install --quiet --disable-pip-version-check "$App\client-cli[qr]"
 if ($LASTEXITCODE) { throw "pip install failed" }
 $ExitsSrc = if ($env:SRNET_EXITS_SRC) { $env:SRNET_EXITS_SRC } else { "srnet-exits @ git+https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack" }
-& $VPy -m pip show --quiet srnet-exits 2>$null | Out-Null
-if ($WithExits -or $LASTEXITCODE -eq 0) {
+if ($WithExits -or $HadExits) {
   Write-Host "Installing the exits add-on"
-  & $VPy -m pip install --quiet --upgrade $ExitsSrc
+  Invoke-Py -m pip install --quiet --disable-pip-version-check --upgrade $ExitsSrc
   if ($LASTEXITCODE) { throw "pip install of the exits add-on failed" }
 }
 

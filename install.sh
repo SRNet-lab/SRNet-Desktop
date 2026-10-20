@@ -8,13 +8,22 @@ PREFIX="${SRNET_PREFIX:-$HOME/.local/share/srnet-client}"
 BIN="${SRNET_BIN:-$HOME/.local/bin}"
 SRC="$(cd "$(dirname "$0")" && pwd)"
 
-if [ "${1:-}" = "--uninstall" ]; then
+UNINSTALL=0; WITH_EXITS=0
+for a in "$@"; do
+  case "$a" in
+    --uninstall) UNINSTALL=1;;
+    --with-exits) WITH_EXITS=1;;
+    -h|--help) sed -n '2,5p' "$0"; exit 0;;
+    *) echo "install.sh: unknown option $a (see --help)" >&2; exit 2;;
+  esac
+done
+
+if [ "$UNINSTALL" = 1 ]; then
   rm -rf "$PREFIX" "$BIN/srnet" "$BIN/srnet-relayer" "$HOME/.local/share/applications/srnet-ui.desktop" "$HOME/.local/share/applications/srnet-open.desktop"
   echo "Removed the SRNet client. Your settings in ~/.srnet were left in place."
   exit 0
 fi
-WITH_EXITS=0
-[ "${1:-}" = "--with-exits" ] && WITH_EXITS=1
+# The add-on comes from its git repo (or a local copy), never by bare name from PyPI.
 EXITS_SRC="${SRNET_EXITS_SRC:-srnet-exits @ git+https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack}"
 
 PY="${PYTHON:-python3}"
@@ -32,12 +41,20 @@ cp -R "$SRC/client-cli" "$SRC/snapps" "$PREFIX/app/"
 cp "$SRC/LICENSE" "$SRC/LICENSE-APACHE-2.0.txt" "$SRC/README.md" "$PREFIX/app/"
 find "$PREFIX/app" -name __pycache__ -prune -exec rm -rf {} +
 
-[ -x "$PREFIX/venv/bin/python" ] || "$PY" -m venv "$PREFIX/venv"
-"$PREFIX/venv/bin/python" -m pip install --quiet --upgrade pip
-"$PREFIX/venv/bin/python" -m pip install --quiet "$PREFIX/app/client-cli[qr]"
-if [ "$WITH_EXITS" = 1 ] || "$PREFIX/venv/bin/python" -m pip show --quiet srnet-exits >/dev/null 2>&1; then
+VPY="$PREFIX/venv/bin/python"
+has_module() { [ -x "$VPY" ] && "$VPY" -c "import importlib.util,sys;sys.exit(0 if importlib.util.find_spec('$1') else 1)"; }
+HAD_EXITS=0; has_module srnet_exits && HAD_EXITS=1
+if has_module eth_account || [ -e "$BIN/srnet-relayer" ]; then
+  # An install from before the split: start a clean venv so no wallet libraries are left in it.
+  echo "Removing the old client's wallet libraries"
+  rm -rf "$PREFIX/venv"
+fi
+[ -x "$VPY" ] || "$PY" -m venv "$PREFIX/venv"
+"$VPY" -m pip install --quiet --upgrade pip
+"$VPY" -m pip install --quiet "$PREFIX/app/client-cli[qr]"
+if [ "$WITH_EXITS" = 1 ] || [ "$HAD_EXITS" = 1 ]; then
   echo "Installing the exits add-on"
-  "$PREFIX/venv/bin/python" -m pip install --quiet --upgrade "$EXITS_SRC"
+  "$VPY" -m pip install --quiet --upgrade "$EXITS_SRC"
 fi
 
 cat > "$BIN/srnet" <<W

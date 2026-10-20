@@ -20,6 +20,11 @@ jobs:
       - name: Install (install.ps1)
         shell: pwsh
         run: ./install.ps1 -NoShortcut
+      - name: Install with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          ./install.ps1 -NoShortcut -Prefix "$env:RUNNER_TEMP\srnet-ps51"
+          if (-not (Test-Path "$env:RUNNER_TEMP\srnet-ps51\bin\srnet.cmd")) { throw "no launcher" }
       - name: Shortcut creation
         shell: pwsh
         run: |
