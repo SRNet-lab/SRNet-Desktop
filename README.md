@@ -1,27 +1,24 @@
-# SRNet client (v0.1 Beta)
+# SRNet client (v0.2 Beta)
 
-One app for SRNet: typed SNApps, the exit marketplace, and your SRNet balance.
+One app for SRNet: chat rooms, boards, wikis, mail, private files and other SNApps, over
+Session Router.
 
 - **SNApps.** Boards, chat rooms, wikis, storefronts, file drops, profiles and plain-HTML
   `.sesh` pages. Hosts serve only signed data; the client ships the interface. Every record is
   signature-checked, every template runs in a sandbox with no network access, and HTML pages
   open in a viewer that strips all scripts.
-- **Exits (Beta / Untested).** Browse exit sellers from the signed exit board, buy an hour,
-  auto-renew, and connect. The board is fetched from three `.sesh` names with failover and a
-  verified cache. The exit marketplace works but is not production-certified: buy one hour at
-  a time and keep amounts small.
-- **Wallet / Top up.** Scan the QR with a phone wallet, or send USDC on Arbitrum One from any
-  exchange or wallet. A relayer moves it into your SRNet balance. No ETH needed.
-- **One way to pay.** Exits, store items and future paid SNApps all use *Pay with SRNet
-  balance*, confirmed in the app's own prompt and sent through the same relayer, so paying
-  never needs ETH either.
 - **Mail.** Sealed messages to anyone's SRNet address, stored by mail hosts until they come
   online. Hosts can't read your mail or see who sent it. Senders sign every message.
 - **Private files.** File drops are encrypted on your computer before upload. Share with chosen
   people, with anyone who has the link, or publish unencrypted if you choose.
+- **Shops.** A storefront shows each item's price with a payment address, the exact amount and
+  a QR code. You pay from your own wallet; the client never holds money.
+- **Exits (add-on).** Buying time on an SRNet exit and sending your traffic through it is a
+  separate add-on, `srnet-exits`, from
+  [SRNet-VPSHost-ExitPack](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack). Install it with
+  `./install.sh --with-exits`. Without it, this client has no wallet and no payment code.
 
-SRNet is beta software. Payments go through the SRNetBalance contract on Arbitrum One, which
-holds real USDC and has not been audited. Start with small amounts.
+SRNet is beta software.
 
 SRNet is an independent project. It is not affiliated with or endorsed by the Session Foundation
 or the Session Technology Foundation.
@@ -68,8 +65,8 @@ These steps are for a fresh Ubuntu 24.04 desktop (amd64), the supported platform
 release. We recommend a dedicated machine or drive for SRNet. Run the blocks below in a terminal,
 top to bottom. Each block starts in your home folder.
 
-macOS works for SNApps, mail, files and the wallet; routing traffic through an exit
-(`srnet connect`) uses nftables and is Linux-only. Windows is not supported in this release.
+macOS works for SNApps, mail and files; routing traffic through an exit
+(`srnet connect`, in the exits add-on) uses nftables and is Linux-only. Windows is not supported in this release.
 
 ### 1. Session Router
 
@@ -145,47 +142,42 @@ cd ~
 sudo apt install -y git python3-venv nftables   # nftables: the kill switch used by srnet connect
 git clone https://github.com/SRNet-lab/SRNet-Desktop.git
 cd SRNet-Desktop
-./install.sh
+./install.sh --with-exits                       # or plain ./install.sh without the exits add-on
 export PATH="$HOME/.local/bin:$PATH"
 cd ~
 ```
 
 The installer needs no root. It puts everything under `~/.local/share/srnet-client` and adds
-`srnet` and `srnet-relayer` to `~/.local/bin`. `~/SRNet-Desktop/install.sh --uninstall` removes it
-and keeps your wallet in `~/.srnet`. The `export PATH` line is only needed in this terminal; Ubuntu
-adds `~/.local/bin` to new logins automatically.
+`srnet` to `~/.local/bin`. `~/SRNet-Desktop/install.sh --uninstall` removes it and keeps your
+settings in `~/.srnet`. The `export PATH` line is only needed in this terminal; Ubuntu adds
+`~/.local/bin` to new logins automatically. Running `./install.sh` again later upgrades the
+client and, if it is installed, the exits add-on.
 
 ### 4. First run
 
 ```sh
-srnet key new     # create your wallet; asks you to choose a keystore passphrase (back up the file and passphrase)
-srnet doctor      # check Session Router, DNS, the demo hosts, your wallet and the relayer
+srnet doctor      # check Session Router, DNS, the demo hosts (and the exits add-on, if installed)
 srnet ui          # open the app in your browser
 ```
 
-`srnet key new` asks for a keystore passphrase twice. It encrypts your wallet file; you need it
-whenever you use the wallet, and it cannot be recovered if lost.
+The app opens with the demo lobby, directory and mail already joined.
 
-The app opens with the demo lobby, directory and mail already joined. Top-ups and payments go
-through the SRNet demo relayer on a `.sesh` name by default, so there is nothing to set up and you
-never need ETH (see [Paying](#paying)).
+### 5. Use an exit (exits add-on)
 
-### 5. Fund your wallet and use an exit
-
-In the app's **Wallet** tab (or `srnet topup --amount 2`), send about 2 USDC on Arbitrum One to the
-address it shows. One hour of exit time costs what the seller lists (the demo exits charge 0.50
-USDC), plus the 3% deposit fee and small relayer fees.
+You need a little USDC on Arbitrum One or Base in any wallet (a phone wallet or an exchange
+withdrawal both work), plus a little ETH on the same network for the network fee.
 
 ```sh
 srnet exits                            # list sellers; note a seller id
-srnet buy <seller id>                  # prepay one hour from your SRNet balance
-srnet connect <seller id>              # route traffic and DNS through the exit (asks for sudo)
+srnet buy --seller <id> --hours 1      # shows the address, exact amount and a QR code
+                                       # pay it from your wallet; the client waits for the seller
+srnet connect <id>                     # route traffic and DNS through the exit (asks for sudo)
 curl -s https://api.ipify.org; echo    # prints the exit's IP address
 srnet disconnect                       # back to your normal connection
-curl -s https://api.ipify.org; echo    # your own IP again
 ```
 
-The **Exits** tab in the app does the same with buttons.
+The **Exits** tab in the app does the same with buttons. More in the add-on's
+[README](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack/blob/main/client/README.md).
 
 ### Starting and stopping Session Router
 
@@ -200,42 +192,31 @@ sudo systemctl stop session-router-client      # stop it
 ## The app
 
 `srnet ui` (or plain `srnet`; `srnet snapps` is an alias) is the one app. It opens SNApps on Home
-on `127.0.0.1:48920`, with three ribbon tabs in the same window and style:
+on `127.0.0.1:48920`:
 
 - **Home**: join a collection, your sidebar of rooms, boards, file drops, mail, and **Check my setup**.
-- **Exits (Beta / Untested)**: the signed seller board (region, price per hour, last refresh), buy
-  one hour from your SRNet balance (final, passphrase asked in a sheet), connect, disconnect,
-  auto-renew and lease status.
-- **Wallet**: your SRNet balance, the top-up QR and address, the relayer setting (optional), and
-  any USDC waiting in your wallet to be deposited.
-
-The wallet backend runs inside the same process on a token-protected loopback port; the shell
-reaches it only through the core's API.
+- **Add-on tabs**: an installed add-on can add its own tab, such as **Exits** from `srnet-exits`.
+  Its backend runs on a token-protected loopback port, and the app reaches it only through
+  its own origin.
 
 `srnet doctor` (and Check my setup) runs a read-only preflight: ports, the Session Router API on
-`127.0.0.1:1190`, `.sesh` DNS, a demo reachability probe, clock, disk and VPN/firewall, then your
-wallet, SRNet balance and relayer. Each line is PASS/WARN/FAIL with a FIX hint; a report file is written for support.
+`127.0.0.1:1190`, `.sesh` DNS, a demo reachability probe, clock, disk and VPN/firewall, then the
+checks of any installed add-on. Each line is PASS/WARN/FAIL with a FIX hint; a report file is
+written for support.
 
-The page only answers to the link it prints, and your keystore passphrase is used for the
-action you click and never saved.
+The page only answers to the link it prints.
 
 ## Command line
 
 ```
-srnet exits                      exit marketplace (Beta / Untested): list sellers
-srnet buy <seller>               prepay one hour from your SRNet balance (--hours N for more)
-srnet renew --loop               buy the next hour near the end of the current one
-srnet connect <seller>           route traffic and DNS through the exit (Linux; sudo for the kill switch and DNS)
-srnet topup --amount N           top up: QR or send USDC from any wallet, gas-free deposit
-srnet cashout --amount N         withdraw unused SRNet balance (gas-free)
-srnet pay --vendor-id V --amount N   pay any SRNet seller from your balance
-srnet vendor --shop-key K        seller: set up SRNet-balance payments
-srnet deliver                    resend your exit claim to the seller
-srnet status | stop | disconnect
-srnet ui [--config F]            the app (SNApps + Exits + Wallet); `snapps` is an alias
-srnet key new|import|show        your encrypted wallet
+srnet ui [--config F]            the app; `snapps` is an alias
 srnet doctor                     check setup
+srnet open <link>                open an srnet:// link (shows the join sheet)
+srnet mail ...                   sealed mail (srnet mail -h)
 ```
+
+With the exits add-on: `srnet exits`, `srnet buy`, `srnet paid`, `srnet connect`,
+`srnet status`, `srnet disconnect` and `srnet verify`. Without it, those print how to install it.
 
 Details: [client-cli/README.md](client-cli/README.md).
 
@@ -270,49 +251,28 @@ Hosts can act on content in three ways, each a signed, public record:
 
 Rooms also show a host-signed header with the room's description and rules.
 
-## Paying
+## Paying in shops
 
-Your SRNet balance lives in the SRNetBalance contract on Arbitrum One at
-`0x7E0d01B7dd916BdAB96B0971ab92D160E1664431`. The source is verified on Sourcify.
-The contract is unaudited; keep amounts small.
+Shop items carry a price in USDC (Arbitrum One or Base) or ETH, and the seller's own address.
+**Pay** shows the network, the address, the exact amount and a QR code for a phone wallet
+(EIP-681). You pay from your own wallet and pay the network fee; the client never holds or moves
+money. Then **I paid: tell the seller** sends the seller an order with the transaction hash. Shop
+owners can check a payment with `srnet verify` (exits add-on) or in the block explorer.
 
-How funding and paying work:
+- One payment is limited to 20 USDC by default (`"payments": {"max_usdc": "40"}` in
+  `client.json` changes it).
+- ETH prices only work on test networks unless you set `"payments": {"allow_mainnet": true}`.
+- Payments are final; there are no refunds through SRNet.
+- Items from shops that still use the old SRNet balance show "seller needs to update".
 
-1. **Top up.** Scan the QR in Wallet (or `srnet topup`) with a phone wallet, or send USDC on
-   Arbitrum One to your SRNet wallet address from any exchange or wallet. Send only USDC on
-   Arbitrum One.
-2. **Deposit.** When it arrives, the client signs a gas-free approval and the relayer moves it
-   into your SRNet balance.
-3. **Pay.** Exits, store items and cash-outs are signed by your wallet and submitted by the same
-   relayer. You never need ETH.
-
-Fees:
-
-- Deposit fee: 3% of each deposit, not refunded on cash-out.
-- Relayer fee: a flat fee per relayed action, taken from your SRNet balance: 0.05 USDC per
-  deposit and 0.02 USDC per payment, hourly renewal or cash-out by default. The contract caps it
-  at 1 USDC. Your signature binds the amount, the recipient and the fee, so the relayer can't
-  move your funds anywhere else or charge more than you signed.
-- Leases are prepaid whole hours, at most $20 per lease. Payment is final once a lease starts.
-  Buying one hour at a time keeps the most you can lose to about one hour.
-- Store items are paid the same way: one payment from your SRNet balance to the seller, at most
-  $20, final, with no fee beyond the relayer fee. Sellers run `srnet vendor --shop-key <key>` once and put the vendor id
-  in their listings. Store payments from the SNApps window stay off on mainnet until you set
-  `"payments": {"allow_mainnet": true}` in `client.json`.
-- After you buy exit time, the client sends your signed claim straight to the seller over
-  Session Router and waits for the seller's acknowledgment. `srnet deliver` resends it.
-
-**Relayer.** Top-ups, payments, renewals and cash-outs go through a relayer, which pays the gas.
-The client uses the SRNet demo relayer by default, reached only over Session Router at
-`http://srnet7fqaajaqb6u7ho56znknysg5ime6kfbaymaaih4ba3q1ndo.sesh/relayer`. To use another one, enter
-its URL in the Wallet tab (or put `"relayer": "<url>"` in `~/.srnet/config.json`, or set
-`SRNET_RELAYER`). Anyone can run one with `srnet-relayer` (see
-[client-cli/README.md](client-cli/README.md)). With `"relayer": "off"`, payments are sent from your
-own wallet instead, which needs a little ETH on Arbitrum One for gas.
+**Old SRNet balance.** Earlier versions kept USDC in an SRNet balance on Arbitrum One. That is
+gone. If you have USDC left there, the exits repository has a small tool to send it back to your
+wallet until 2027-01-18:
+[contrib/legacy-cashout](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack/tree/main/contrib/legacy-cashout).
 
 ## Joining collections
 
-The SNApps client starts with Home, Exits and Wallet in the ribbon. Everything else is something you joined:
+The SNApps client starts with Home in the ribbon (plus a tab for each installed add-on). Everything else is something you joined:
 
 - **Join**: on Home, paste a `.sesh` address (lists what that host offers) or an invite link
   `srnet://<name>.sesh/<type>/<collection>#root=<root key>`. The core fetches the host's signed delegation and
@@ -334,9 +294,15 @@ The SNApps client starts with Home, Exits and Wallet in the ribbon. Everything e
 
 - [Session-Router-SRNet](https://github.com/SRNet-lab/Session-Router-SRNet): the Session Router
   build used in the install steps above, with exit mapping added.
-- [SRNet-VPSHost-ExitPack](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack): run your own
-  paid exit on an Ubuntu server and list it on the exit board.
+- [SRNet-VPSHost-ExitPack](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack): the exits
+  add-on for this client, and the pack for running your own paid exit and listing it on the
+  exit board.
 
 ## License
 
-Apache-2.0 for the exits client and contract, MIT for the SNApps client. See [LICENSE](LICENSE).
+client-cli/ is Apache-2.0 and snapps/ is MIT. See [LICENSE](LICENSE).
+
+## Donations
+
+If SRNet is useful to you, donations are welcome at
+`0xec4fEECa354C7eabbe8957a23c361Aa365E3b377` (USDC or ETH on Arbitrum One or Base).

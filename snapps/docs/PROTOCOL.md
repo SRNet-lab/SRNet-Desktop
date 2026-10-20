@@ -83,23 +83,23 @@ unwrapped.
 Templates never see keys, wraps or links: the core strips them from views, decrypts files
 itself, and shows links and access lists only in its own trusted sheets.
 
-## Payments: SRNet balance (`shop.*`)
+## Payments: direct (`shop.*`)
 
-Every paid action across SRNet (exits, store items, and later paid files and rooms) uses one
-flow: the core or CLI shows its own confirm prompt, then calls
-`SRNetBalance.startLease(vendor_id, price, 1)` on the live contract. One prepaid hour begins at
-once, so the seller can claim the whole amount immediately and the payment is final. The 3%
-fee was taken when the buyer topped up; nothing more is charged. Each payment is capped at
-20 USDC (the contract's `maxPerLease`).
+The core shows a payment; it never makes one. For a paid item it opens its own sheet with the
+network, the seller's address, the exact amount and an EIP-681 link and QR code
+(`ethereum:<usdc>@<chain>/transfer?address=<to>&uint256=<units>`, or
+`ethereum:<to>@<chain>?value=<wei>` for ETH). The buyer pays from their own wallet. Payments
+are final. The core refuses an amount over the buyer's limit (`"payments": {"max_usdc"}`,
+default 20).
 
-- `shop.listing@1`: `currency` is `SRNET` (default) with `vendor_id` (bytes32) and `price`
-  (USDC, at most 6 decimals, > 0 and ≤ 20). The legacy `ETH`/`USDC` direct form
-  (`chain_id`, `pay_to`) is testnet-only.
-- `shop.order@1`: `{lease_id, buyer, note?}`, refs `[listing]`. The buyer's receipt; the seller's
-  client checks it on-chain (`leaseInfo`/`leaseExtra`: vendor id, amount, buyer) before shipping.
-- Sellers bind a vendor id once with `configureVendor(vendorId, salt)`; `srnet vendor --shop-key K`
-  derives `salt = keccak("srnet-shop/v1" ‖ seller key)`. The seller's signature on the listing ties
-  the store key to that vendor id.
+- `shop.listing@1`: `currency` `USDC` (official USDC on Arbitrum One 42161 or Base 8453) or `ETH`,
+  with `chain_id`, `pay_to` (the seller's address) and `price`. ETH is testnet-only unless the
+  buyer sets `"payments": {"allow_mainnet": true}`. Listings with `currency` `SRNET` (the old
+  SRNet balance) show "seller needs to update" and can't be paid.
+- `shop.order@2`: `{chain_id, tx, note?}`, refs `[listing]`. The buyer's note after paying, with
+  the transaction hash, so the seller can look the payment up. The core doesn't check payments;
+  `srnet verify` in the exits add-on (or a block explorer) does. `shop.order@1` (old receipts)
+  stays readable.
 
 ## Host remove (moderation)
 
