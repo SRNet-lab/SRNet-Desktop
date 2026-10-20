@@ -57,7 +57,7 @@ class Host:
         dp = os.path.join(self.dir, "delegation.json")
         self.delegation = _readjson(dp) if os.path.exists(dp) else None
 
-    # hook for a future SRNet-balance stamp; return an error string to refuse
+    # hook for a future postage stamp; return an error string to refuse
     def stamp_check(self, stamp, to, pile):
         return None
 

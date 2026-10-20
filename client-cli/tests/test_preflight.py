@@ -3,7 +3,7 @@ import sys, tempfile, unittest
 from pathlib import Path
 from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT), str(ROOT / "vendor")]
+sys.path[:0] = [str(ROOT)]
 from srnet import preflight  # noqa: E402
 
 

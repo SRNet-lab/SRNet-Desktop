@@ -2,7 +2,7 @@
 local test host -> srnet snapps -> join room by srnet:// link -> post -> mail to self ->
 encrypted upload + open -> srnet ui serves the app. No chain transactions.
 Runs on Windows (CI) and Linux/macOS (installed launcher)."""
-import json, os, subprocess, sys, tempfile, time, urllib.request
+import json, os, subprocess, tempfile, time, urllib.request
 from pathlib import Path
 
 WIN = os.name == "nt"
