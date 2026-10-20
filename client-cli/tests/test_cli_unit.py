@@ -184,3 +184,34 @@ class Removed(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SudoAndCtrlC(unittest.TestCase):
+    def test_sudo_srnet_says_run_it_as_yourself(self):
+        with mock.patch.object(cli.os, "geteuid", lambda: 0):
+            rc, out, err = run(["exits"], env={"SRNET_NO_ADDONS": "1", "SUDO_USER": "tester"})
+        self.assertEqual(rc, 2)
+        self.assertIn("not with sudo", err)
+        self.assertIn("srnet exits", err)
+
+    def test_root_without_sudo_is_left_alone(self):
+        env = {"SRNET_NO_ADDONS": "1"}
+        with mock.patch.object(cli.os, "geteuid", lambda: 0), mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SUDO_USER", None)
+            self.assertFalse(cli._under_sudo())
+        with mock.patch.object(cli.os, "geteuid", lambda: 0), \
+                mock.patch.dict(os.environ, {"SUDO_USER": "tester", "SRNET_ALLOW_ROOT": "1"}):
+            self.assertFalse(cli._under_sudo())
+
+    def test_ui_ctrl_c_stops_quietly(self):
+        def boom(args, st):
+            raise KeyboardInterrupt
+        with mock.patch.object(cli, "cmd_snapps", boom), mock.patch.object(cli.os, "geteuid", lambda: 1000):
+            rc, out, err = run(["--home", tempfile.mkdtemp(), "ui", "--no-browser", "--port", "48997"])
+        self.assertEqual(rc, 130)
+        self.assertIn("srnet ui: stopped", err)
+        self.assertNotIn("Traceback", err)
+
+    def test_core_ctrl_c_has_no_traceback(self):
+        src = (ROOT.parent / "snapps" / "typed" / "core.py").read_text()
+        self.assertIn("except KeyboardInterrupt:", src.split("def main():", 1)[1])

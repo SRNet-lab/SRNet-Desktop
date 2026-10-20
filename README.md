@@ -82,13 +82,14 @@ echo "deb [signed-by=/usr/share/keyrings/session-foundation.gpg] https://deb.ses
 sudo apt update
 cd /tmp
 curl -fLO https://github.com/SRNet-lab/Session-Router-SRNet/releases/download/v1.1.0-srnet6/session-router-srnet_1.1.0+srnet6_amd64.deb
-echo "5c1c9b553b25649657f9f8e3ae0431aa3fe0534c82e65214588c728307bf3237  session-router-srnet_1.1.0+srnet6_amd64.deb" | sha256sum -c
-sudo apt install -y ./session-router-srnet_1.1.0+srnet6_amd64.deb session-router-client
-sudo apt-mark hold session-router-srnet session-router-client
+echo "5c1c9b553b25649657f9f8e3ae0431aa3fe0534c82e65214588c728307bf3237  session-router-srnet_1.1.0+srnet6_amd64.deb" | sha256sum -c \
+  && sudo apt install -y ./session-router-srnet_1.1.0+srnet6_amd64.deb session-router-client \
+  && sudo apt-mark hold session-router-srnet session-router-client
 cd ~
 ```
 
-`sha256sum -c` must print `OK`; if it does not, stop and re-download. The hold keeps apt from
+`sha256sum -c` must print `OK`; if it does not, nothing gets installed (the `&&` stops there):
+re-download and run the three chained lines again. The hold keeps apt from
 swapping the stock router binary back in on an upgrade. (If you had installed the stock
 `session-router-bin` before, apt may now list `libsessionrouter1.1`, `liboxen-quic1.12` and similar
 as no longer required. That is fine: the SRNet build does not use them, so `sudo apt autoremove`
@@ -157,7 +158,10 @@ srnet doctor      # check Session Router, DNS, the demo hosts (and the exits add
 srnet ui          # open the app in your browser
 ```
 
-The app opens with the demo lobby, directory and mail already joined.
+The app opens with the demo lobby, directory and mail already joined. `srnet ui` keeps running in
+that terminal while you use the app (it is the app's local server); leave it open, use a second
+terminal for other `srnet` commands, and press Ctrl-C there when you want to stop the app.
+Run `srnet` commands as yourself, never with `sudo`: the steps that need root ask for it.
 
 ### 5. Use an exit (exits add-on)
 

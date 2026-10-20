@@ -94,7 +94,16 @@ case ":$PATH:" in
 esac
 echo "  srnet doctor       check your setup (Session Router, DNS); writes a report"
 echo "  srnet ui           open the app in your browser"
-echo "Session Router is a separate program: install and start it yourself before using .sesh names."
+if command -v session-router >/dev/null 2>&1 || [ -x /usr/bin/session-router ] || \
+   systemctl list-unit-files session-router-client.service >/dev/null 2>&1; then
+  if systemctl is-active --quiet session-router-client 2>/dev/null; then
+    echo "  Session Router: installed and running (session-router-client)"
+  else
+    echo "  Session Router: installed but not running; start it: sudo systemctl start session-router-client"
+  fi
+else
+  echo "Session Router is a separate program (README, Install, step 1): install and start it before using .sesh names."
+fi
 [ "$WITH_EXITS" = 1 ] && echo "  srnet exits        list exits; buy time with: srnet buy --seller <id> --hours N"
 [ "$WITH_EXITS" = 1 ] && [ "$(uname -s)" = "Darwin" ] && echo "  note: 'srnet connect' (routing traffic through an exit) is Linux-only for now."
 exit 0

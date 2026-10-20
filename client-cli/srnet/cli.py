@@ -220,6 +220,13 @@ def cmd_mail(args, st: state.State) -> int:
     return subprocess.call(cmd, cwd=str(root))
 
 
+def _under_sudo() -> bool:
+    """`sudo srnet ...` by a normal user (root's own shell and SRNET_ALLOW_ROOT=1 are left alone)."""
+    if os.name == "nt" or os.environ.get("SRNET_ALLOW_ROOT") == "1":
+        return False
+    return os.geteuid() == 0 and os.environ.get("SUDO_USER") not in (None, "", "root")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="srnet", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -265,6 +272,12 @@ def main(argv=None) -> int:
         except Exception:
             continue
 
+    if _under_sudo():
+        print("srnet runs as your own user, not with sudo: your wallet, paid time and settings live in "
+              "your ~/.srnet, and the few steps that need root (srnet connect / disconnect) ask sudo "
+              "for your password themselves. Run it again without sudo, e.g.: srnet "
+              + " ".join(argv if argv is not None else sys.argv[1:]), file=sys.stderr)
+        return 2
     args, extra = ap.parse_known_args(argv)
     if args.cmd == "mail":
         args.rest = extra + args.rest
@@ -272,9 +285,12 @@ def main(argv=None) -> int:
         ap.error("unrecognized arguments: " + " ".join(extra))
     st = state.State(Path(args.home) if args.home else None)
     try:
-        return cmds[args.cmd](args, st)
+        rc = cmds[args.cmd](args, st)
     except KeyboardInterrupt:
-        return 130
+        rc = 130
+    if rc == 130 and cmds.get(args.cmd) is cmd_ui:
+        print("\nsrnet ui: stopped", file=sys.stderr)
+    return rc
 
 
 if __name__ == "__main__":

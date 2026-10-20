@@ -1365,7 +1365,10 @@ def main():
     srv = serve(core, a.port)
     print(f"typed client: http://127.0.0.1:{srv.server_address[1]}/  (author {core.me[:12]}…)",
           flush=True)
-    threading.Event().wait()
+    try:
+        threading.Event().wait()
+    except KeyboardInterrupt:   # Ctrl-C in the terminal of `srnet ui`: stop quietly
+        sys.exit(130)
 
 
 if __name__ == "__main__":
