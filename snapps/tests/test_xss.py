@@ -12,7 +12,8 @@ class XSS(unittest.TestCase):
         js = (TPL / "app.js").read_text()
         code = "\n".join(l for l in js.splitlines() if not l.strip().startswith("//")
                              and not l.strip().startswith('frame.src = "/frame/" + encodeURIComponent(')
-                             and not l.strip().startswith('$("w-qr").src = URL.createObjectURL(await q.blob());'))
+                             and not l.strip().startswith('if (img) im.src = img; // reviewed: img is only ever a blob:')
+                             and not l.strip().startswith('sc.src = "/addon/" + a.name + "/tab.js"; // reviewed:'))
         for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write",
                      "eval(", "new Function", ".src =", ".href =", "setAttribute("):
             self.assertNotIn(sink, code, sink)
@@ -68,7 +69,8 @@ class TypedTemplates(unittest.TestCase):
         for f in files:
             code = "\n".join(l for l in f.read_text().splitlines() if not l.strip().startswith("//")
                              and not l.strip().startswith('frame.src = "/frame/" + encodeURIComponent(')
-                             and not l.strip().startswith('$("w-qr").src = URL.createObjectURL(await q.blob());'))
+                             and not l.strip().startswith('if (img) im.src = img; // reviewed: img is only ever a blob:')
+                             and not l.strip().startswith('sc.src = "/addon/" + a.name + "/tab.js"; // reviewed:'))
             for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write",
                          "eval(", "new Function", "setAttribute(", ".src =", "srcdoc"):
                 self.assertNotIn(sink, code, f"{f}: {sink}")

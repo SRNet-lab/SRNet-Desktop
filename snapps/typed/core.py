@@ -32,7 +32,7 @@ from urllib.parse import parse_qs, urlparse
 
 import mbfmt as F
 from . import joins as J
-from . import adapters, filecrypt as FC, htmlview, views
+from . import adapters, filecrypt as FC, htmlview, payinfo as PI, views
 from . import mail as M
 from .record import BOARD, KIND_TYPES, TESTNET_CHAINS, codec_for, make_record
 from .registry import RegistryError, TemplateManager
@@ -43,19 +43,33 @@ from .sync import SyncError, http_json, submit, sync_once
 
 HERE = Path(__file__).resolve().parent
 TEMPLATES = HERE / "templates"
-# Exits / Wallet tabs: `srnet ui` runs the wallet backend (srnet.ui, token-protected, loopback) and
-# passes it here as SRNET_WALLET_API=http://127.0.0.1:<port>/#<token>. The shell reaches it only
-# through the X-Core-gated /api/wallet/* bridge below, so the token never reaches a page.
-WALLET_CALLS = {"board", "status", "buy", "connect", "autorenew", "disconnect", "topup/info",
-                "topup/start", "topup/status", "relayer", "preflight"}
+# Add-on tabs (e.g. Exits from srnet-exits): `srnet ui` starts each add-on's backend
+# (token-protected, loopback) and passes them here as SRNET_ADDONS, a JSON list of
+# {"name", "title", "url": "http://127.0.0.1:<port>/#<token>", "slow": [...]}. The shell reaches them
+# only through the X-Core-gated /api/addon/<name>/* bridge below, so tokens never reach a page; the
+# tab script is served from this origin at /addon/<name>/tab.js.
+ADDON_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+ADDON_CALL_RE = re.compile(r"^[a-z][a-z0-9/_-]{0,63}$")
+ADDON_GET_RE = re.compile(r"^(tab\.js|tab\.css|qr\.svg\?q=[0-9a-f]{16})$")
 
 
-def wallet_from_env():
-    m = re.fullmatch(r"(http://127\.0\.0\.1:\d+)/#([A-Za-z0-9_-]{16,})", os.environ.get("SRNET_WALLET_API", ""))
-    return (m.group(1), m.group(2)) if m else None
+def addons_from_env():
+    try:
+        raw = json.loads(os.environ.get("SRNET_ADDONS") or "[]")
+    except ValueError:
+        return {}
+    out = {}
+    for a in raw if isinstance(raw, list) else []:
+        if not isinstance(a, dict) or not ADDON_NAME_RE.match(str(a.get("name", ""))):
+            continue
+        m = re.fullmatch(r"(http://127\.0\.0\.1:\d+)/#([A-Za-z0-9_-]{16,})", str(a.get("url", "")))
+        if m:
+            out[a["name"]] = {"title": str(a.get("title") or a["name"])[:40], "base": m.group(1),
+                              "tok": m.group(2), "slow": set(a.get("slow") or [])}
+    return out
 SHELL = HERE / "shell"
 KIND_TEMPLATE = {"board": "board", "room": "room", "wiki": "wiki", "shop": "shop",
-                 "drop": "drop", "id": "profile", "exit": "exit", "card": "card",
+                 "drop": "drop", "id": "profile", "card": "card",
                  "directory": "directory"}
 SHELL_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; "
              "frame-src 'self'; img-src blob:; base-uri 'none'; form-action 'none'; "
@@ -72,9 +86,11 @@ class Coll:
         self.name, self.kind = cfg["name"], cfg["kind"]
         self.id = cfg.get("id") or self.name  # local id (unique per client); name is the protocol name
         self.cfg, self.core = cfg, core
+        if self.kind not in KIND_TEMPLATE:  # e.g. the old built-in "exit" board: now in the exits add-on
+            raise ValueError(f"unknown collection kind {self.kind!r}")
         self.hosts = list(cfg.get("hosts", []))
         self.policy, self.last, self.view_cache = {}, {"host": None, "error": None}, None
-        if self.kind in ("exit", "card"):
+        if self.kind == "card":
             self.store = None
             return
         self.root_pin = cfg["root_pin"]
@@ -97,15 +113,6 @@ class Coll:
                 p.unlink()
 
     def sync(self):
-        if self.kind == "exit":
-            try:
-                v = adapters.exit_view(self.hosts[0], self.cfg["pin_sesh"],
-                                       seen=self.core.prefs["exit_seen"].get(self.id))
-                self.core.prefs["exit_seen"][self.id] = v.pop("seen")
-                self.view_cache, self.last = v, {"host": self.hosts[0], "error": None}
-            except Exception as e:  # stale cache stays visible, marked
-                self.last = {"host": None, "error": f"{type(e).__name__}: {e}"}
-            return self.last
         if self.kind == "card":
             try:
                 src = self.cfg.get("url")
@@ -150,7 +157,7 @@ class Core:
         self.dir = Path(data_dir)
         self.dir.mkdir(parents=True, exist_ok=True)
         self.clock, self.autoconfirm = clock, autoconfirm
-        self.wallet = wallet_from_env()
+        self.addons = addons_from_env()
         kp = self.dir / "author.key"  # posting key: NOT the Session Router transport key
         if not kp.exists():
             with open(os.open(kp, os.O_WRONLY | os.O_CREAT, 0o600), "wb") as f:
@@ -161,7 +168,7 @@ class Core:
         self.enc_pub = FC.pub_hex(self.xkey)
         self.prefs_p = self.dir / "prefs.json"
         self.prefs = {"follows": [], "mutes": [], "moderation": "honour", "revealed": [],
-                      "exit_seen": {}, "outbox": []}
+                      "outbox": []}
         if self.prefs_p.exists():
             self.prefs.update(json.loads(self.prefs_p.read_text()))
         reg = config.get("registry") or json.loads((TEMPLATES / "registry.json").read_text())
@@ -367,7 +374,7 @@ class Core:
 
     def share(self, cid):
         c = self.colls[cid]
-        if c.kind in ("exit", "card"):
+        if c.kind == "card":
             raise ValueError("built-in views can't be shared")
         return {"link": J.make(self._host_of(c.cfg), c.kind, c.name, c.root_pin)}
 
@@ -392,8 +399,6 @@ class Core:
     def sidebar(self):
         groups = {}
         for cid, c in self.colls.items():
-            if c.kind == "exit":
-                continue  # Exits is a built-in ribbon item
             ent = self.prefs["joined"].get(cid, {})
             groups.setdefault(self._host_of(c.cfg), []).append({
                 "id": cid, "label": ent.get("label") or cid, "name": c.name, "kind": c.kind,
@@ -443,7 +448,7 @@ class Core:
         base = {"collection": name, "kind": c.kind, "me": self.me[:6], "me_key": self.me,
                 "status": c.last, "rules": (c.policy or {}).get("rules", ""),
                 "template": KIND_TEMPLATE[c.kind]}
-        if c.kind in ("exit", "card"):
+        if c.kind == "card":
             return dict(base, view=c.view_cache or {}, hidden=0)
         items, hidden = self._items(c)
         if c.kind == "board":
@@ -487,10 +492,11 @@ class Core:
     # ---- drafts: template proposes, core validates, user confirms, core signs ----
     def draft(self, name, t, body, refs):
         c = self.colls.get(name)
-        if not c or c.kind in ("exit", "card"):
+        if not c or c.kind == "card":
             raise F.FormatError("read-only collection")
         if not isinstance(body, dict) or not isinstance(refs, list):
             raise F.FormatError("bad draft")
+        v = 1
         if c.kind == "board":
             if t != "board.post":
                 raise F.FormatError("board only accepts board.post")
@@ -498,14 +504,15 @@ class Core:
             F.make_post(self.key, name, str(body.get("text", "")), rt)  # validation only
             body = {"text": body.get("text"), "reply_to": rt}
         else:
-            spec = KIND_TYPES[c.kind].get(t, 1)
+            spec = KIND_TYPES[c.kind].latest(t)
+            v = spec.v
             spec.check_body({k: v for k, v in body.items() if v is not None}, refs)
             if t == "id.profile" and not body.get("enc_key"):
                 body = dict(body, enc_key=self.enc_pub)  # lets others share encrypted files with you
         tok = secrets.token_hex(12)
         with self.lock:
             self.drafts[tok] = {"collection": name, "t": t, "body": body, "refs": refs,
-                                "at": self.clock()}
+                                "v": v, "at": self.clock()}
         prev = {"token": tok, "collection": name, "t": t,
                 "lines": [_line(k, v) for k, v in body.items() if v not in (None, "")],
                 "refs": refs}
@@ -531,7 +538,7 @@ class Core:
                               pow_bits=bits)
         else:
             env = make_record(self.key, KIND_TYPES[c.kind], c.name, d["t"], d["body"], d["refs"],
-                              pow_bits=bits)
+                              v=d.get("v", 1), pow_bits=bits)
         r = submit(c.hosts, env)
         if r.get("ok"):
             c.sync()
@@ -586,8 +593,8 @@ class Core:
         self.save()
         return {"ok": True}
 
-    # ---- payments: core-owned sheet, testnet only, never sends ----
-    def pay_draft(self, name, listing_id):
+    # ---- payments: the core shows address, amount and QR; it never sends or checks a payment ----
+    def _listing(self, name, listing_id):
         c = self.colls[name]
         if c.kind != "shop":
             raise F.FormatError("not a store")
@@ -595,69 +602,106 @@ class Core:
                   if x["id"] == listing_id), None)
         if not l or not l["active"]:
             raise F.FormatError("no such active listing")
-        if l.get("currency") == "SRNET":
-            P = _payments()
-            pay = P.Payment("shop", l["vendor_id"], P.usdc(l["price"]), item=l["title"],
-                            seller=l["seller_label"], ref=l["id"])
-            lines = P.describe(pay)
-            tok = secrets.token_hex(12)
-            with self.lock:
-                self.pending_pay[tok] = {"payment": pay, "collection": name, "at": self.clock()}
-            return {"ok": True, "srnet": True, "token": tok, "sheet": {
-                "title": "Pay with SRNet balance", "lines": lines, "item": l["title"],
-                "seller": l["seller_label"], "amount": l["price"], "currency": "USDC (SRNet balance)",
-                "note": "Enter your wallet passphrase to pay. Only this core signs; the store page never sees it."}}
-        if l["chain_id"] not in TESTNET_CHAINS:
-            raise F.FormatError("mainnet payments are disabled in this build")
-        return {"ok": True, "sheet": {
-            "network": TESTNET_CHAINS[l["chain_id"]], "chain_id": l["chain_id"],
-            "to": l["pay_to"], "amount": l["price"], "currency": l["currency"],
-            "item": l["title"], "seller": l["seller_label"], "listing": l["id"],
-            "note": "Testnet only. Shown for the user's wallet; this client never sends funds."}}
+        return l
 
-    def _pay_chain(self, passphrase: str | None, private_key: str | None = None):
-        P = _payments()
-        from srnet import chain as CH, keys as K
-        cfg = self.config.get("payments") or {}
-        pk = private_key or K.unlock(Path(cfg.get("keystore") or Path.home() / ".srnet" / "keystore.json"),
-                                     passphrase or "")
-        contract = cfg.get("contract") or CH.DEFAULT_CONTRACT
-        rel = cfg.get("relayer")
-        rel = "" if str(rel or "").strip().lower() in CH.RELAYER_OFF and rel else (rel or _home_relayer(contract))
-        ch = CH.ChainCfg(rpc=cfg.get("rpc") or CH.DEFAULT_RPC, contract=contract, private_key=pk, relayer=rel)
-        if ch.chainid() in CH.MAINNET_CHAINS and not cfg.get("allow_mainnet"):
-            raise F.FormatError("mainnet payments are off; set payments.allow_mainnet in the client config")
-        return P, ch
-
-    def pay_confirm(self, tok, passphrase: str | None = None, private_key: str | None = None):
-        """User confirmed the core's payment sheet: pay from SRNet balance, then post a receipt."""
+    def pay_draft(self, name, listing_id):
+        l = self._listing(name, listing_id)
+        if not l.get("payable"):
+            raise F.FormatError("this listing can't be paid: " + (l.get("note") or "seller needs to update"))
+        cid, to = l["chain_id"], l["pay_to"]
+        if l["currency"] == "USDC":
+            units = PI.usdc_units(l["price"])
+            cap = PI.max_units(self.config)
+            if units > cap:
+                raise F.FormatError(f"{PI.fmt_usdc(units)} USDC is over your limit of {PI.fmt_usdc(cap)} per "
+                                    "payment (\"payments\": {\"max_usdc\": ...} in client.json)")
+            uri, amount, token = PI.usdc_link(cid, to, units), PI.fmt_usdc(units), PI.USDC[cid]
+        else:  # ETH: testnet only
+            if cid not in TESTNET_CHAINS:
+                raise F.FormatError("ETH payments are testnet-only")
+            uri, amount, token = PI.eth_link(cid, to, PI.eth_wei(l["price"])), l["price"], None
+        tok = secrets.token_hex(12)
         with self.lock:
-            d = self.pending_pay.pop(tok, None)
-        if not d or self.clock() - d["at"] > 600:
-            return {"ok": False, "error": "unknown or expired payment"}
-        try:
-            P, ch = self._pay_chain(passphrase, private_key)
-            r = P.pay(ch, d["payment"])
-        except Exception as e:  # chain / keystore errors go back to the sheet
-            return {"ok": False, "error": str(e)[:300]}
-        rec = self._sign_submit({"collection": d["collection"], "t": "shop.order",
-                                 "body": {"lease_id": r["lease_id"], "buyer": r["buyer"], "note": None},
-                                 "refs": [d["payment"].ref]})
-        return dict(r, receipt_posted=bool(rec.get("ok")))
+            self.pending_pay = {k: v for k, v in self.pending_pay.items() if self.clock() - v["at"] < 3600}
+            self.pending_pay[tok] = {"collection": name, "listing": l["id"], "chain_id": cid, "uri": uri,
+                                     "at": self.clock()}
+        return {"ok": True, "token": tok, "qr": PI.have_qr(), "sheet": {
+            "network": PI.label(cid), "chain_id": cid, "to": to, "amount": amount, "currency": l["currency"],
+            "token_address": token, "uri": uri, "item": l["title"], "seller": l["seller_label"],
+            "listing": l["id"], "testnet": cid in PI.TESTNETS,
+            "note": "Pay from your own wallet: send exactly this amount on " + PI.label(cid)
+                    + ". You pay the network fee. Payments are final. This app never sends funds."}}
+
+    def pay_qr(self, tok):
+        d = self.pending_pay.get(tok)
+        if not d:
+            return None
+        return PI.qr_svg(d["uri"])
+
+    def pay_order(self, tok, tx, note=None):
+        """After paying: draft a shop.order naming the transaction, for the seller (shown in a sheet)."""
+        d = self.pending_pay.get(tok)
+        if not d:
+            raise F.FormatError("unknown or expired payment")
+        tx = str(tx or "").strip().lower()
+        if not PI.TX_RE.match(tx):
+            raise F.FormatError("paste the transaction hash (0x followed by 64 hex characters)")
+        return self.draft(d["collection"], "shop.order", {"chain_id": d["chain_id"], "tx": tx,
+                                                          "note": (note or None)}, [d["listing"]])
 
     def verify_order(self, name, order_id):
-        """Seller: check a shop.order on-chain (read-only)."""
+        """Seller: was this order really paid? The core doesn't check payments; the exits add-on can
+        (read-only). Without it, return the explorer link."""
         c = self.colls[name]
         for l in views.shop_view(self._items(c)[0], c.policy or {})["listings"]:
             for o in l["orders"]:
-                if o["id"] == order_id:
-                    P = _payments()
-                    from srnet import chain as CH
-                    cfg = self.config.get("payments") or {}
-                    ch = CH.read_only(cfg.get("rpc") or CH.DEFAULT_RPC, cfg.get("contract") or CH.DEFAULT_CONTRACT)
-                    return {"ok": True, "paid": P.verify(ch, o["lease_id"], l["vendor_id"], P.usdc(l["price"]),
-                                                         o["buyer"])}
+                if o["id"] != order_id:
+                    continue
+                if "tx" not in o:
+                    return {"ok": True, "checked": False, "note": "an old SRNet-balance order; it can't be checked here"}
+                link = PI.tx_link(o["chain_id"], o["tx"])
+                if "exits" in self.addons and l.get("currency") == "USDC":
+                    r = self.addon_call("exits", "verify", json.dumps(
+                        {"chain_id": o["chain_id"], "tx": o["tx"], "to": l["pay_to"], "amount": l["price"]}).encode())
+                    try:
+                        r = json.loads(r)
+                    except ValueError:
+                        r = {"ok": False, "err": "bad reply from the exits add-on"}
+                    return dict(r, checked=bool(r.get("ok")), link=link)
+                return {"ok": True, "checked": False, "link": link,
+                        "note": "Open the link to check it, or install the exits add-on (srnet-exits) to check here."}
         raise F.FormatError("no such order")
+
+    def addon_call(self, name, call, raw=None, method="POST", deadline=None):
+        """Forward one call to an add-on backend. Returns the raw reply body."""
+        a = self.addons.get(name)
+        if a is None:
+            return json.dumps({"ok": False, "err": f"the {name} add-on isn't running: start SRNet with `srnet ui`"}).encode()
+        ok = (ADDON_GET_RE.match(call) if method == "GET" else ADDON_CALL_RE.match(call)) and ".." not in call
+        if not ok:
+            return json.dumps({"ok": False, "err": "bad add-on call"}).encode()
+        if method == "GET":
+            req = urllib.request.Request(f"{a['base']}/{call}{'&' if '?' in call else '?'}k={a['tok']}")
+        else:
+            req = urllib.request.Request(f"{a['base']}/api/{call}", data=raw or b"{}", method="POST",
+                                         headers={"Content-Type": "application/json", "X-CSRF-Token": a["tok"]})
+        to = deadline or (600 if call in a["slow"] else 18)
+
+        def fetch():
+            try:
+                with urllib.request.urlopen(req, timeout=to) as r:
+                    return r.read(1 << 22)
+            except urllib.error.HTTPError as e:
+                return e.read(1 << 16)
+            except OSError as e:
+                return json.dumps({"ok": False, "err": f"{name} add-on: " + str(e)[:200]}).encode()
+        # A hard wall-clock deadline (under the shell's 20 s) so a tab never spins: urlopen's timeout
+        # is per socket read, not for the whole call.
+        box = []
+        t = threading.Thread(target=lambda: box.append(fetch()), daemon=True)
+        t.start()
+        t.join(to)
+        return box[0] if box else json.dumps({"ok": False, "err": "timed out"}).encode()
 
     # ---- file drop: encrypted by default; the host only ever sees ciphertext ----
     def max_file_bytes(self, c) -> int:
@@ -953,39 +997,13 @@ def make_handler(core: Core, test_mode=False):
         def _json(self, code, obj):
             self._send(code, json.dumps(obj).encode(), "application/json; charset=utf-8")
 
-        def _wallet(self, call, raw=None):
-            """Bridge to the wallet backend (exits, lease, balances, top-up). Mainnet rules live there."""
-            if core.wallet is None:
-                return self._json(200, {"ok": False, "err": "wallet not running: start SRNet with `srnet ui`"})
-            base, tok = core.wallet
-            if call == "qr.svg":
-                try:
-                    with urllib.request.urlopen(f"{base}/qr.svg?k={tok}", timeout=10) as r:
-                        return self._send(200, r.read(1 << 20), "image/svg+xml")
-                except OSError as e:
-                    return self._json(404, {"ok": False, "err": str(e)[:200]})
-            if call not in WALLET_CALLS:
-                return self._json(404, {"ok": False, "err": "unknown wallet call"})
-            req = urllib.request.Request(f"{base}/api/{call}", data=raw or b"{}", method="POST",
-                                         headers={"Content-Type": "application/json", "X-CSRF-Token": tok})
-            def fetch():
-                try:
-                    with urllib.request.urlopen(req, timeout=to) as r:
-                        return r.read(1 << 22)
-                except urllib.error.HTTPError as e:
-                    return e.read(1 << 16)
-                except OSError as e:
-                    return json.dumps({"ok": False, "err": "wallet backend: " + str(e)[:200]}).encode()
-            # Board fetch needs Session Router; a hard 18s wall-clock deadline (under the shell's 20s)
-            # so Exits never spins: urlopen's timeout is per socket read, not for the whole call.
-            to = 18 if call == "board" else 600
-            if call == "board":
-                box = []
-                t = threading.Thread(target=lambda: box.append(fetch()), daemon=True)
-                t.start(); t.join(to)
-                body = box[0] if box else json.dumps({"ok": False, "err": "timed out"}).encode()
-            else:
-                body = fetch()
+        def _addon(self, name, call, raw=None, method="POST"):
+            """Bridge to an add-on backend (e.g. exits). Its own rules live there."""
+            body = core.addon_call(name, call, raw, method)
+            if method == "GET" and call.startswith("qr.svg"):
+                if body[:1] == b"<":
+                    return self._send(200, body, "image/svg+xml")
+                return self._json(404, {"ok": False, "err": "no QR"})
             return self._send(200, body, "application/json; charset=utf-8")
 
         def _api_ok(self):
@@ -1010,6 +1028,13 @@ def make_handler(core: Core, test_mode=False):
             if u.path in static:
                 n, ct = static[u.path]
                 return self._send(200, (SHELL / n).read_bytes(), ct)
+            m = re.fullmatch(r"/addon/([a-z][a-z0-9-]{0,31})/(tab\.js|tab\.css)", u.path)
+            if m:
+                if m.group(1) not in core.addons:
+                    return self._send(404, b"", "text/plain")
+                body = core.addon_call(m.group(1), m.group(2), method="GET")
+                ct = "text/javascript; charset=utf-8" if m.group(2).endswith(".js") else "text/css; charset=utf-8"
+                return self._send(200, body, ct)
             if u.path.startswith("/frame/"):
                 body, csp = core.frame(u.path.split("/")[2])
                 if body is None:
@@ -1021,8 +1046,17 @@ def make_handler(core: Core, test_mode=False):
             if not u.path.startswith("/api/") or not self._api_ok():
                 return self._json(403, {"error": "core API: trusted shell only"})
             p = u.path[5:]
-            if p == "wallet/qr.svg":
-                return self._wallet("qr.svg")
+            m = re.fullmatch(r"addon/([a-z][a-z0-9-]{0,31})/qr\.svg", p)
+            if m:
+                qid = (q.get("q") or [""])[0]
+                if not re.fullmatch(r"[0-9a-f]{16}", qid):
+                    return self._json(400, {"error": "bad id"})
+                return self._addon(m.group(1), "qr.svg?q=" + qid, method="GET")
+            if p == "pay/qr.svg":
+                svg = core.pay_qr((q.get("token") or [""])[0])
+                if not svg:
+                    return self._json(404, {"error": "no QR (install the qrcode package; the link works too)"})
+                return self._send(200, svg, "image/svg+xml")
             try:
                 if p == "collections":
                     return self._json(200, {"collections": [
@@ -1032,7 +1066,7 @@ def make_handler(core: Core, test_mode=False):
                         for c in core.colls.values()], "me": core.me,
                         "templates": core.templates.status(), "test": test_mode,
                         "outbox": len(core.prefs["outbox"]),
-                        "wallet": core.wallet is not None})
+                        "addons": [{"name": n, "title": a["title"]} for n, a in sorted(core.addons.items())]})
                 if p == "sidebar":
                     return self._json(200, core.sidebar())
                 if p.startswith("view/"):
@@ -1055,8 +1089,11 @@ def make_handler(core: Core, test_mode=False):
             n = int(self.headers.get("Content-Length") or 0)
             raw = self.rfile.read(min(n, (FC.MAX_PLAIN * 4 // 3 if u.path == "/api/mail/attach" else FC.MAX_PLAIN) + (64 << 10)))
             p = u.path[5:]
-            if p.startswith("wallet/"):
-                return self._wallet(p[7:], raw)
+            m = re.fullmatch(r"addon/([a-z][a-z0-9-]{0,31})/([a-z][a-z0-9/_-]{0,63})", p)
+            if m:
+                return self._addon(m.group(1), m.group(2), raw)
+            if p == "preflight":
+                return self._json(200, _preflight(core.dir))
             try:
                 if p == "upload":
                     q = parse_qs(u.query)
@@ -1126,8 +1163,8 @@ def make_handler(core: Core, test_mode=False):
                     return self._json(200, {"ok": True})
                 if p == "pay":
                     return self._json(200, core.pay_draft(a["c"], a["listing"]))
-                if p == "pay/confirm":
-                    return self._json(200, core.pay_confirm(a["token"], a.get("passphrase")))
+                if p == "pay/order":
+                    return self._json(200, core.pay_order(a["token"], a.get("tx"), a.get("note")))
                 if p == "pay/verify":
                     return self._json(200, core.verify_order(a["c"], a["order"]))
                 if p == "registry/offer":
@@ -1159,14 +1196,23 @@ def serve(core, port=0, test_mode=False, sync_every=2.0):
     return srv
 
 
-def _payments():
-    """The shared SRNet payments module from the client (client-cli/srnet/payments.py)."""
+def _preflight(data_dir) -> dict:
+    """The setup check from the SRNet client (client-cli/srnet/preflight.py), read-only."""
     import sys
     d = os.environ.get("SRNET_CLIENT_DIR") or str(HERE.parents[1] / "client-cli")
     if d not in sys.path:
         sys.path.insert(0, d)
-    from srnet import payments
-    return payments
+    try:
+        from srnet import preflight
+    except ImportError as e:
+        return {"ok": False, "err": f"setup check not available: {e}"}
+    rep = preflight.run()
+    out = {"ok": True, "report": rep, "text": preflight.text(rep)}
+    try:
+        out["file"] = str(preflight.write_report(rep, home=Path(os.environ.get("SRNET_HOME") or Path.home() / ".srnet")))
+    except (OSError, RuntimeError):
+        pass
+    return out
 
 
 def _line(k, v):
@@ -1195,17 +1241,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-def _home_relayer(contract: str | None = None) -> str:
-    """The relayer the user set once in the Wallet tab (<srnet home>/config.json), else $SRNET_RELAYER,
-    else the default relayer when `contract` is the default contract."""
-    import json as _json
-    import os as _os
-    home = Path(_os.environ.get("SRNET_HOME") or Path.home() / ".srnet")
-    try:
-        cfg = _json.loads((home / "config.json").read_text())
-    except (OSError, ValueError):
-        cfg = {}
-    from srnet import chain as CH
-    return CH.relayer_url(cfg if isinstance(cfg, dict) else {}, contract)

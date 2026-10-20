@@ -14,24 +14,24 @@ class ShellCopy(unittest.TestCase):
         self.assertNotIn("honours", js)
         self.assertIn("Honor host hides", js)
 
-    def test_relayer_gate_and_empty_slots(self):
+    def test_no_wallet_in_core(self):
         html = (SHELL / "shell.html").read_text()
         js = (SHELL / "shell.js").read_text()
-        self.assertIn("w-relayerhint", html)
-        self.assertIn("id=\"w-topup\" disabled", html)
-        self.assertIn("id=\"w-topupstate\" hidden", html)
-        self.assertIn("id=\"w-uri\" hidden", html)
-        self.assertIn("savedRelayer", js)
-        self.assertIn("Save a relayer URL first", js)
+        for word in ("Wallet", "passphrase", "relayer", "SRNet balance", "wallet/"):
+            self.assertNotIn(word, html)
+            self.assertNotIn(word, js)
+        self.assertIn('<nav id="ribbon"><button data-b="home">Home</button></nav>', html)
+        self.assertIn('<div id="addons"></div>', html)
 
-    def test_board_timeout_abort(self):
+    def test_addon_tabs_and_pay_sheet(self):
         js = (SHELL / "shell.js").read_text()
-        self.assertIn("AbortController", js)
-        self.assertIn("Couldn't load the exit board (timed out). Try Refresh.", js)
-        self.assertIn("BOARD_DEADLINE_MS = 20000", js)
-        self.assertIn("Promise.race", js)
-        self.assertNotIn("board unavailable", js)
-        self.assertIn("x-cs-hint", (SHELL / "shell.html").read_text())
+        self.assertIn("function addonTabs(list)", js)
+        self.assertIn('"/addon/" + a.name + "/tab.js"', js)
+        self.assertIn('api("preflight", {})', js)
+        self.assertIn('"send exactly: "', js)
+        self.assertIn('"Copy address"', js)
+        self.assertIn('api("pay/order"', js)
+        self.assertNotIn("pay/confirm", js)
 
 if __name__ == "__main__":
     unittest.main()

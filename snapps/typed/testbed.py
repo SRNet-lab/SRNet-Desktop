@@ -1,13 +1,10 @@
 """Spin up a full local platform for tests and demos (all on 127.0.0.1):
-board host + mirror, a hub with room/wiki/shop/drop/id collections, a signed exit board
-(existing format, built with the vendored exit-board code), a SNApp card, and a plain-HTML site."""
+board host + mirror, a hub with room/wiki/shop/drop/id collections, a SNApp card, and a plain-HTML site."""
 from __future__ import annotations
 
-import json
 import os
 import tempfile
 import threading
-import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -41,22 +38,6 @@ def static_server(directory):
     return srv, f"http://127.0.0.1:{srv.server_address[1]}"
 
 
-def make_exit_board(d: Path):
-    """A signed exit board in the *existing* format (srnet-exit-board/v1, listing v2)."""
-    bf, L = adapters.boardfmt, adapters.boardfmt.L
-    bkey, skey = F.new_key(), F.new_key()
-    now = int(time.time())
-    listing = L.make(skey, payout="0x" + "11" * 20, vendor_id="0x" + "22" * 32, chainid=42161,
-                     contract="0x" + "33" * 20, country="NL", price_per_gb="0.50")
-    body = {"v": 1, "board": L.sesh_of(bf.pub_raw(bkey)), "seq": 3, "issued": now,
-            "expires": now + 3600, "max_listing_age_s": bf.DEFAULT_MAX_LISTING_AGE_S,
-            "listings": [listing]}
-    d.mkdir(parents=True, exist_ok=True)
-    (d / "board.json").write_text(json.dumps(body))
-    (d / "board.sig").write_text(bf.sign_board(bkey, body))
-    return body["board"]
-
-
 def start(tmp=None, admins=(), sellers=(), mirror=True, hub_override=None):
     tmp = Path(tmp or tempfile.mkdtemp(prefix="typed-"))
     env = {"tmp": tmp, "servers": []}
@@ -87,16 +68,13 @@ def start(tmp=None, admins=(), sellers=(), mirror=True, hub_override=None):
     hs = serve(hub)
     env["servers"].append(hs)
     env.update(hub=hub, hub_url=url_of(hs), hub_pin=F.pub_hex(hroot), hub_host_key=hhk)
-    # exit board + card + html site
-    ex = tmp / "exit-www"
-    env["exit_sesh"] = make_exit_board(ex)
-    es, env["exit_url"] = static_server(ex)
+    # card + html site
     site = tmp / "site"
     site.mkdir()
     (site / "index.html").write_text(HOSTILE_HTML)
     (site / "about.html").write_text("<p>About page</p>")
     ss, env["site_url"] = static_server(site)
-    env["servers"] += [es, ss]
+    env["servers"] += [ss]
     env["card_path"] = str(adapters._CARD.parent / "rooms.example.json")
     return env
 
@@ -109,8 +87,6 @@ def client_config(env):
                        ("people", "id")):
         cols.append({"name": name, "kind": kind, "root_pin": env["hub_pin"],
                      "hosts": [f"{hub}/c/{name}"]})
-    cols.append({"name": "exits", "kind": "exit", "hosts": [env["exit_url"]],
-                 "pin_sesh": env["exit_sesh"]})
     cols.append({"name": "rooms-card", "kind": "card", "path": env["card_path"]})
     return {"collections": cols, "html_sites": {"demo.sesh": env["site_url"]}}
 

@@ -1,93 +1,162 @@
-"""Store purchase paid from SRNet balance, on local anvil only (skipped without Foundry)."""
+"""Store payments: the core shows the seller's address, the exact amount and a QR code (EIP-681),
+and never sends or checks a payment itself. No chain or wallet needed."""
+import json
 import sys
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[1]
-sys.path[:0] = [str(HERE.parent), str(ROOT / "scripts"), str(ROOT / "client-cli")]
-import anvil_env  # noqa: E402
-from typed import testbed as T  # noqa: E402
+sys.path[:0] = [str(HERE.parent)]
+import mbfmt as F  # noqa: E402
+from typed import payinfo as PI, testbed as T, views  # noqa: E402
 from typed.core import Core  # noqa: E402
 
+PAY_TO = "0x" + "ab" * 20
+TX = "0x" + "cd" * 32
 
-@unittest.skipUnless(anvil_env.available(), "anvil/forge not installed")
+
 class ShopPay(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from srnet import chain, payments
-        import mbfmt as F
-        cls.chain = anvil_env.start()
         seller_seed = b"s" * 32
         cls.seller_pub = F.pub_hex(F.key_from_seed(seller_seed))
         cls.env = T.start(mirror=False, sellers=[cls.seller_pub])
-        cfg = T.client_config(cls.env)
-        cfg["payments"] = {"rpc": cls.chain["rpc"], "contract": cls.chain["contract"]}
-        cls.cfg = cfg
-        # seller wallet (dev key 3) binds its vendor id on-chain, derived from the store seller key
-        k = cls.chain["keys"]
-        sch = chain.ChainCfg(rpc=cls.chain["rpc"], contract=cls.chain["contract"], private_key=k[3])
-        salt = payments.shop_salt(cls.seller_pub)
-        cls.vid = payments.vendor_id_for(sch.address(), salt)
-        sch._send("configureVendor(bytes32,bytes32)", cls.vid, salt)
-        cls.sch = sch
-        # buyer (dev key 4) has 30 USDC in SRNet balance
-        bch = chain.ChainCfg(rpc=cls.chain["rpc"], contract=cls.chain["contract"], private_key=k[4])
-        bch._send("mint(address,uint256)", bch.address(), 50_000_000, to=bch.usdc())
-        bch.approve(50_000_000); bch.fund(30_000_000)
-        cls.bch = bch
+        cls.cfg = T.client_config(cls.env)
         d = cls.env["tmp"] / "pay"
-        (d / "seller").mkdir(parents=True); (d / "seller" / "author.key").write_bytes(seller_seed)
-        cls.seller = Core(str(d / "seller"), cfg, autoconfirm=True); cls.seller.sync()
+        (d / "seller").mkdir(parents=True)
+        (d / "seller" / "author.key").write_bytes(seller_seed)
+        cls.seller = Core(str(d / "seller"), cls.cfg, autoconfirm=True)
+        cls.seller.sync()
         (d / "buyer").mkdir(parents=True)
-        cls.buyer = Core(str(d / "buyer"), cfg, autoconfirm=True); cls.buyer.sync()
+        cls.buyer = Core(str(d / "buyer"), cls.cfg, autoconfirm=True)
+        cls.buyer.sync()
 
     @classmethod
     def tearDownClass(cls):
-        anvil_env.stop(cls.chain)
+        T.stop(cls.env)
 
-    def listing(self, price="2.5", **kw):
-        body = dict({"title": "Sticker pack", "desc": "", "price": price, "currency": "SRNET",
-                     "vendor_id": self.vid}, **kw)
+    def listing(self, title, price="2.5", **kw):
+        body = dict({"title": title, "desc": "", "price": price, "currency": "USDC", "chain_id": 8453,
+                     "pay_to": PAY_TO}, **kw)
         r = self.seller.draft("store", "shop.listing", body, [])["result"]
         self.buyer.sync("store")
-        return r, next(l for l in self.buyer.view("store")["view"]["listings"] if l["title"] == body["title"]
-                       and l["price"] == price)
+        found = [l for l in self.buyer.view("store")["view"]["listings"] if l["title"] == title]
+        return r, (found[0] if found else None)
 
-    def test_pay_with_srnet_balance(self):
-        r, l = self.listing()
+    def test_usdc_sheet_shows_address_amount_and_link(self):
+        r, l = self.listing("Stickers")
         self.assertTrue(r["ok"], r)
-        before = self.bch.available()
+        self.assertTrue(l["payable"])
         d = self.buyer.pay_draft("store", l["id"])
-        self.assertTrue(d["srnet"])
-        self.assertIn("no extra fee", "\n".join(d["sheet"]["lines"]))
-        res = self.buyer.pay_confirm(d["token"], private_key=self.chain["keys"][4])
-        self.assertTrue(res["ok"], res)
-        self.assertEqual(before - self.bch.available(), 2_500_000)  # no fee at payment time
-        self.assertTrue(res["receipt_posted"])
+        s = d["sheet"]
+        self.assertEqual((s["to"], s["amount"], s["currency"], s["chain_id"], s["network"]),
+                         (PAY_TO, "2.50", "USDC", 8453, "Base"))
+        self.assertEqual(s["token_address"], PI.USDC[8453])
+        self.assertEqual(s["uri"], f"ethereum:{PI.USDC[8453]}@8453/transfer?address={PAY_TO}&uint256=2500000")
+        self.assertIn("never sends funds", s["note"])
+        if PI.have_qr():
+            self.assertTrue(self.buyer.pay_qr(d["token"]).lstrip().startswith(b"<"))
+
+    def test_arbitrum_and_limit(self):
+        _, l = self.listing("Poster", price="7", chain_id=42161)
+        self.assertIn("@42161/transfer", self.buyer.pay_draft("store", l["id"])["sheet"]["uri"])
+        _, big = self.listing("Big thing", price="25")
+        with self.assertRaises(F.FormatError) as e:
+            self.buyer.pay_draft("store", big["id"])
+        self.assertIn("over your limit of 20.00", str(e.exception))
+        rich = Core(str(self.env["tmp"] / "pay" / "rich"), dict(self.cfg, payments={"max_usdc": "50"}),
+                    autoconfirm=True)
+        rich.sync()
+        self.assertEqual(rich.pay_draft("store", big["id"])["sheet"]["amount"], "25.00")
+
+    def test_host_refuses_bad_listings(self):
+        for title, kw in (("old style", {"currency": "SRNET", "vendor_id": "0x" + "22" * 32, "chain_id": None,
+                                         "pay_to": None}),
+                          ("wrong chain", {"chain_id": 1}),
+                          ("eth mainnet", {"currency": "ETH", "chain_id": 42161}),
+                          ("too precise", {"price": "1.0000001"})):
+            body = {k: v for k, v in dict({"title": title, "desc": "", "price": "1", "currency": "USDC",
+                                           "chain_id": 8453, "pay_to": PAY_TO}, **kw).items() if v is not None}
+            r = self.seller.draft("store", "shop.listing", body, [])["result"]
+            self.assertFalse(r.get("ok"), (title, r))
+
+    def test_old_srnet_listing_shows_seller_needs_update(self):
+        items = [{"t": "shop.listing", "author": "aa" * 32, "id": "x1", "ts": 1, "refs": [],
+                  "body": {"title": "Old", "price": "1", "currency": "SRNET", "vendor_id": "0x" + "22" * 32}},
+                 {"t": "shop.order", "author": "bb" * 32, "id": "o1", "ts": 2, "refs": ["x1"],
+                  "body": {"lease_id": 5, "buyer": PAY_TO}}]
+        v = views.shop_view(items, {"sellers": ["aa" * 32]})
+        l = v["listings"][0]
+        self.assertFalse(l["payable"])
+        self.assertEqual(l["note"], "seller needs to update")
+        self.assertEqual(l["orders"][0]["lease_id"], 5)
+
+    def test_order_names_the_tx_and_verify_without_addon(self):
+        _, l = self.listing("Mug")
+        d = self.buyer.pay_draft("store", l["id"])
+        with self.assertRaises(F.FormatError):
+            self.buyer.pay_order(d["token"], "0x1234")
+        r = self.buyer.pay_order(d["token"], TX, "thanks")["result"]
+        self.assertTrue(r["ok"], r)
         self.seller.sync("store")
-        o = [x for x in self.seller.view("store")["view"]["listings"] if x["id"] == l["id"]][0]["orders"][0]
-        self.assertTrue(self.seller.verify_order("store", o["id"])["paid"])
-        self.assertEqual(self.sch.earned(res["lease_id"]), 2_500_000)  # seller can claim it all now
-        # token is single use
-        self.assertFalse(self.buyer.pay_confirm(d["token"], private_key=self.chain["keys"][4])["ok"])
+        mine = next(x for x in self.seller.view("store")["view"]["listings"] if x["id"] == l["id"])
+        o = mine["orders"][0]
+        self.assertEqual((o["chain_id"], o["tx"], o["note"]), (8453, TX, "thanks"))
+        self.seller.addons = {}
+        v = self.seller.verify_order("store", o["id"])
+        self.assertFalse(v["checked"])
+        self.assertEqual(v["link"], "https://basescan.org/tx/" + TX)
+        self.assertIn("exits add-on", v["note"])
 
-    def test_cap_and_validation(self):
-        bad = self.seller.draft("store", "shop.listing", {"title": "Too much", "price": "25", "currency": "SRNET",
-                                                          "vendor_id": self.vid}, [])["result"]
-        self.assertFalse(bad["ok"])  # over the 20 USDC per-payment cap: host refuses
-        nov = self.seller.draft("store", "shop.listing", {"title": "No vendor", "price": "1", "currency": "SRNET"},
-                                [])["result"]
-        self.assertFalse(nov["ok"])
-
-    def test_insufficient_balance(self):
-        from srnet import chain
-        k = self.chain["keys"][2]  # funded with nothing in SRNet balance
-        _, l = self.listing(price="3", title="Poster")
+    def test_verify_goes_to_the_exits_addon(self):
+        _, l = self.listing("Hat")
         d = self.buyer.pay_draft("store", l["id"])
-        res = self.buyer.pay_confirm(d["token"], private_key=k)
-        self.assertFalse(res["ok"])
-        self.assertIn("balance", res["error"])
+        self.buyer.pay_order(d["token"], TX)
+        self.seller.sync("store")
+        o = next(x for x in self.seller.view("store")["view"]["listings"] if x["id"] == l["id"])["orders"][0]
+        seen = []
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                seen.append((self.path, self.headers.get("X-CSRF-Token"),
+                             json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
+                body = json.dumps({"ok": True, "paid": True, "amount": "2.50"}).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            self.seller.addons = {"exits": {"title": "Exits", "base": f"http://127.0.0.1:{srv.server_address[1]}",
+                                            "tok": "t" * 20, "slow": set()}}
+            v = self.seller.verify_order("store", o["id"])
+        finally:
+            srv.shutdown()
+            srv.server_close()
+            self.seller.addons = {}
+        self.assertTrue(v["paid"] and v["checked"])
+        self.assertEqual(seen[0][:2], ("/api/verify", "t" * 20))
+        self.assertEqual(seen[0][2], {"chain_id": 8453, "tx": TX, "to": PAY_TO, "amount": "2.5"})
+
+
+class PayInfo(unittest.TestCase):
+    def test_amounts(self):
+        self.assertEqual(PI.usdc_units("2.5"), 2_500_000)
+        self.assertEqual(PI.fmt_usdc(3_000_417), "3.000417")
+        self.assertEqual(PI.fmt_usdc(20_000_000), "20.00")
+        for bad in ("0", "-1", "1.1234567", "abc", ""):
+            with self.assertRaises(PI.PayError):
+                PI.usdc_units(bad)
+        self.assertEqual(PI.max_units({}), 20_000_000)
+        self.assertEqual(PI.max_units({"payments": {"max_usdc": "5"}}), 5_000_000)
+        with self.assertRaises(PI.PayError):
+            PI.usdc_link(1, PAY_TO, 1)
 
 
 if __name__ == "__main__":

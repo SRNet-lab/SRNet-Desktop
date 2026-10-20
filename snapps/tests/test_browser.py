@@ -95,7 +95,7 @@ class Browser(unittest.TestCase):
         # test registry: re-sign the shipped bundles, then approve a malicious "room" 9.0.0
         cls.rk = F.new_key()
         entries = [R.sign_entry(cls.rk, n, "1.0.0", [], R.read_dir(TPL / n))
-                   for n in ("board", "room", "wiki", "profile", "shop", "drop", "exit", "card")]
+                   for n in ("board", "room", "wiki", "profile", "shop", "drop", "card")]
         cfg = T.client_config(cls.env)
         cfg["registry"] = {"pin": F.pub_hex(cls.rk), "entries": entries}
         cls.dir = Path(tempfile.mkdtemp())

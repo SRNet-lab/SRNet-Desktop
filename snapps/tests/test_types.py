@@ -1,5 +1,5 @@
 """End-to-end tests for every typed SNApp on the platform (via the client core)."""
-import hashlib, json, os, time, unittest
+import hashlib, json, os, tempfile, time, unittest
 from helpers import F
 from typed import testbed as T, views
 from typed.core import Core
@@ -199,17 +199,14 @@ class Platform(unittest.TestCase):
         self.assertIsNone(self.b.blob("files", h2))
 
     # ---- exit board and SNApp card (existing formats, unchanged) ----
-    def test_exit_board_view_and_tamper(self):
-        v = self.c.view("exits")["view"]
-        self.assertEqual(len(v["listings"]), 1)
-        self.assertEqual(v["listings"][0]["fields"]["country"], "NL")
-        www = self.env["tmp"] / "exit-www"
-        good = (www / "board.json").read_text()
-        (www / "board.json").write_text(good.replace('"NL"', '"US"'))
-        r = self.c.sync("exits")["exits"]
-        self.assertIn("signature", r["error"])
-        self.assertEqual(self.c.view("exits")["view"]["listings"][0]["fields"]["country"], "NL")
-        (www / "board.json").write_text(good)
+    def test_old_exit_collection_is_skipped(self):
+        # the built-in exit board view moved to the exits add-on; an old config entry must not break the core
+        cfg = T.client_config(self.env)
+        cfg["collections"].append({"name": "exits", "kind": "exit", "hosts": ["http://127.0.0.1:9/"],
+                                   "pin_sesh": "x" * 52 + ".sesh"})
+        c = Core(tempfile.mkdtemp(prefix="old-exit-"), cfg)
+        self.assertNotIn("exits", c.colls)
+        self.assertIn("lobby", c.colls)
 
     def test_snapp_card(self):
         from typed import adapters

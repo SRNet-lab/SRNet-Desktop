@@ -98,6 +98,12 @@ class TypeSet:
     def __init__(self, *specs: TypeSpec):
         self.specs = {s.key: s for s in specs}
 
+    def latest(self, t) -> TypeSpec:
+        vs = [s for s in self.specs.values() if s.name == t]
+        if not vs:
+            raise F.FormatError(f"unknown type {t} for this collection")
+        return max(vs, key=lambda s: s.v)
+
     def get(self, t, v) -> TypeSpec:
         s = self.specs.get(f"{t}@{v}")
         if s is None:
@@ -251,7 +257,7 @@ def keyhex(required=True, nullable=False):
 
 
 SLUG = pattern(r"[a-z0-9][a-z0-9-]{0,63}", what="slug")
-TESTNET_CHAINS = {11155111: "Sepolia", 421614: "Arbitrum Sepolia"}
+TESTNET_CHAINS = {11155111: "Sepolia", 421614: "Arbitrum Sepolia", 84532: "Base Sepolia"}
 
 ROOM_JOIN = TypeSpec("room.join", 1, {"nick": text(24, multiline=False)}, max_refs=0)
 WIKI_PAGE = TypeSpec("wiki.page", 1, {"slug": SLUG, "title": text(120, multiline=False)}, 0)
@@ -268,9 +274,10 @@ ID_PROFILE = TypeSpec("id.profile", 1, {"name": text(32, multiline=False),
 ID_ROTATE = TypeSpec("id.rotate", 1, {"old_key": keyhex(), "new_key": keyhex(nullable=True),
                                       "reason": text(120, required=False, multiline=False)}, 0)
 ID_LINK = TypeSpec("id.link", 1, {"other_key": keyhex()}, 0)
-# Default currency is SRNET: paid from the buyer's SRNet balance to `vendor_id` (one prepaid
-# hour on SRNetBalance, max 20 USDC). ETH/USDC direct (chain_id + pay_to) stays readable as a
-# legacy, testnet-only option.
+# Store listings are paid directly: USDC on Arbitrum One or Base to `pay_to` (chain_id), shown as
+# an address, an exact amount and a QR code. ETH (chain_id + pay_to) stays a testnet-only option.
+# "SRNET" listings (the old SRNet-balance payments) still parse, but can't be paid: the seller
+# needs to update them.
 SHOP_LISTING = TypeSpec("shop.listing", 1, {
     "title": text(80, multiline=False), "desc": text(2000, required=False),
     "price": pattern(r"(0|[1-9][0-9]{0,11})(\.[0-9]{1,18})?", what="price"),
@@ -278,28 +285,37 @@ SHOP_LISTING = TypeSpec("shop.listing", 1, {
     "vendor_id": pattern(r"0x[0-9a-fA-F]{64}", required=False, what="vendor id"),
     "chain_id": integer(1, 2**31, required=False),
     "pay_to": pattern(r"0x[0-9a-fA-F]{40}", required=False, what="address")}, 0)
-SRNET_MAX_PRICE = 20
+SELLER_NEEDS_UPDATE = "seller needs to update"
 
 
 def shop_listing_error(b: dict) -> str | None:
-    if b.get("currency") == "SRNET":
-        if not b.get("vendor_id"):
-            return "SRNET listings need a vendor_id"
-        if b.get("chain_id") or b.get("pay_to"):
-            return "SRNET listings take no chain_id/pay_to"
-        whole, _, frac = b["price"].partition(".")
-        if len(frac) > 6 or float(b["price"]) <= 0 or float(b["price"]) > SRNET_MAX_PRICE:
-            return f"SRNET price must be > 0 and at most {SRNET_MAX_PRICE} USDC, 6 decimals max"
-        return None
+    """None if the listing can be paid. Old SRNet-balance listings return SELLER_NEEDS_UPDATE."""
+    from . import payinfo
+    cur = b.get("currency")
+    if cur == "SRNET":
+        return SELLER_NEEDS_UPDATE
+    if b.get("vendor_id"):
+        return "vendor_id is only for the old SRNet-balance listings"
     if not b.get("chain_id") or not b.get("pay_to"):
-        return "ETH/USDC listings need chain_id and pay_to"
+        return f"{cur} listings need chain_id and pay_to"
+    if cur == "USDC":
+        if b["chain_id"] not in payinfo.USDC:
+            return "USDC listings must be on Arbitrum One (42161) or Base (8453)"
+        try:
+            payinfo.usdc_units(b["price"])
+        except payinfo.PayError as e:
+            return str(e)
     return None
 
 
-# Buyer's receipt after paying from SRNet balance; the seller checks it on-chain (read-only).
+# Buyer's note after paying. v1 (old SRNet-balance lease receipts) stays readable; v2 names the
+# chain and transaction of a direct payment, so the seller can look it up.
 SHOP_ORDER = TypeSpec("shop.order", 1, {"lease_id": integer(1, 2**63),
                                         "buyer": pattern(r"0x[0-9a-fA-F]{40}", what="address"),
                                         "note": text(200, required=False)}, 1)
+SHOP_ORDER2 = TypeSpec("shop.order", 2, {"chain_id": integer(1, 2**31),
+                                         "tx": pattern(r"0x[0-9a-fA-F]{64}", what="transaction hash"),
+                                         "note": text(200, required=False)}, 1)
 SHOP_WITHDRAW = TypeSpec("shop.withdraw", 1, {"reason": text(200, required=False)}, 1)
 SHOP_REVIEW = TypeSpec("shop.review", 1, {"rating": integer(1, 5),
                                           "text": text(500, required=False)}, 1)
@@ -353,7 +369,7 @@ PROFILE_TYPES = (ID_PROFILE, ID_ROTATE, ID_LINK)
 KIND_TYPES = {
     "room": TypeSet(ROOM_MSG, ROOM_TOPIC, ROOM_JOIN, *PROFILE_TYPES),
     "wiki": TypeSet(WIKI_PAGE, WIKI_REV, WIKI_REVERT, WIKI_PROTECT, *PROFILE_TYPES),
-    "shop": TypeSet(SHOP_LISTING, SHOP_WITHDRAW, SHOP_REVIEW, SHOP_ORDER, *PROFILE_TYPES),
+    "shop": TypeSet(SHOP_LISTING, SHOP_WITHDRAW, SHOP_REVIEW, SHOP_ORDER, SHOP_ORDER2, *PROFILE_TYPES),
     "drop": TypeSet(DROP_ITEM, DROP_GRANT, DROP_REVOKE, DROP_REQUEST, *PROFILE_TYPES),
     "id": TypeSet(*PROFILE_TYPES),
     "directory": TypeSet(DIRECTORY_ENTRY, *PROFILE_TYPES),
