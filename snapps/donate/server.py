@@ -289,7 +289,7 @@ def donation_html(app: App, v: dict, msg: str = "", ok: bool = False) -> bytes:
     tok = (f"<p>Token: USDC <code>{E(s['token'])}</code> (the official one on {E(s['network'])}). "
            "Send the token, not ETH.</p>") if "token" in s else \
         f"<p>Send native ETH on {E(s['network'])}, not a token.</p>"
-    left = max(0, s["open_until"] - int(app.clock()))
+    until = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(s["open_until"]))
     note = msg or s.get("last_check", "")
     body = (f"<h1>Donate {E(s['asset'])} on {E(s['network'])}</h1><div class=\"box\">"
             f"<p>Send exactly<br><span class=\"amount mono\">{E(s['amount'])} {E(s['asset'])}</span></p>"
@@ -303,7 +303,7 @@ def donation_html(app: App, v: dict, msg: str = "", ok: bool = False) -> bytes:
             "<p><label><b>After you pay</b>, paste the transaction hash<br>"
             "<input type=\"text\" name=\"tx\" placeholder=\"0x...\" required></label></p>"
             "<p><button type=\"submit\">Check payment</button></p></form>"
-            f"<p><small>This amount is held for you for {left // 86400} more days. Bookmark this page to check later."
+            f"<p><small>This amount is held for you until {until}. Bookmark this page to check later."
             "</small></p>")
     return page("Donate to SRNet", body)
 
