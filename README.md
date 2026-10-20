@@ -245,6 +245,8 @@ buckets, name and type sealed inside). The host stores only ciphertext. Choose p
 - **Anyone with the link**: the key rides in the link after `#`, so the host never sees it.
 - **Not encrypted**: for content meant to be public and indexable.
 
+![A file drop in the SRNet client with three files: a public readme, meeting notes shared with invited people only, and trip photos shared with anyone who has the link](docs/images/storage.png)
+
 Revoking someone stops them getting future versions. It can't take back a copy they already
 downloaded.
 
@@ -252,6 +254,11 @@ Each file drop host sets its own largest file size (25 MiB by default) and may s
 quota per uploader. The client reads the limit from the host's signed policy and refuses a
 larger file before uploading anything. Big files go up in 1 MiB chunks. If an upload is
 interrupted, uploading the same file again continues where it stopped.
+
+**Coming soon:** file drop hosts will be able to turn off public hosting, so they only store
+encrypted files and can't read the files they hold. The client will also let you move or copy
+all your files from one host to another, and keep them synced across several hosts so they stay
+available if one goes down.
 
 ## Moderation, room headers and pins
 
