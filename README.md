@@ -7,6 +7,8 @@
   contract and no escrow.
 - Exits are a separate add-on in their own repository, and this client works without them.
 
+Full history: [CHANGELOG.md](CHANGELOG.md)
+
 One app for SRNet: chat rooms, boards, wikis, mail, private files and other SNApps, over
 Session Router.
 
