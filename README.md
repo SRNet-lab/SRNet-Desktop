@@ -54,17 +54,15 @@ srnet mail name 'srnet://room/...' "Bob's room"              # local petname for
   the recipient key, the message id, the padded size and the time.
 - Messages go to every host on the recipient's list; your client drops duplicates.
 - New installs start with one contact, **SRNet** (the team inbox): `srnet mail send SRNet -s "Hi" -m "..."`.
-- Hosts keep mail 7 days by default (30 at most) and delete it only after your client has saved it and acknowledged it (fetch, then ack). Mail that is never acknowledged is deleted when it expires. Your
-  client keeps it sealed on disk and opens it only to show it.
-- Reading an inbox needs a fresh signed challenge from the owner's key. Nobody else can list
-  or fetch it.
+- Hosts keep mail 7 days by default (30 at most). Your client keeps it sealed on disk.
+- Only the owner's key can list or fetch an inbox.
 - Mail from your contacts goes to **Inbox**. Mail from anyone else goes to **Requests**, which
   has tighter limits (32 messages, 16 KiB each, 20 per hour). Accepting a sender moves them
-  to your inbox on every host without telling the host who they are.
+  to your inbox on every host.
 - **Attach** a file in the Mail page and it is encrypted on your computer and stored on a file
   drop you've joined (no public listing). Only the key-in-link goes inside the sealed message,
   so only your recipients can open it. The size limit is set by the Storage Seller running that file drop (25 MiB by default). You can also paste file-drop links.
-- Petnames are local only. Links can suggest a name; your own name always wins.
+- Petnames are local only.
 
 Wire format and host API: [`snapps/docs/MAIL.md`](snapps/docs/MAIL.md).
 
@@ -101,12 +99,9 @@ echo "5c1c9b553b25649657f9f8e3ae0431aa3fe0534c82e65214588c728307bf3237  session-
 cd ~
 ```
 
-You should see `checksum OK` before apt starts. If the check fails, sha256sum prints `FAILED` and
-nothing gets installed (the `&&` stops there): re-download and run the chained lines again. The hold keeps apt from
-swapping the stock router binary back in on an upgrade. (If you had installed the stock
-`session-router-bin` before, apt may now list `libsessionrouter1.1`, `liboxen-quic1.12` and similar
-as no longer required. That is fine: the SRNet build does not use them, so `sudo apt autoremove`
-is safe.)
+You should see `checksum OK` before apt starts. If the check fails, nothing gets installed:
+re-download and run the chained lines again. The hold keeps apt from swapping the stock router
+binary back in on an upgrade.
 
 The package sets up `session-router-client.service`, starts it now and enables it at boot (see
 [Starting and stopping Session Router](#starting-and-stopping-session-router) to change that later).
@@ -127,7 +122,7 @@ sudo systemctl restart session-router-client
 Programs look names up through `/etc/resolv.conf`. On a stock Ubuntu desktop it already points
 at systemd-resolved (`nameserver 127.0.0.53`). Some cloud and VPS images ship a fixed file with
 the provider's DNS servers instead, so `.sesh` lookups never reach systemd-resolved. This links it
-back only if `127.0.0.53` is missing (your normal DNS keeps working through resolved):
+back only if `127.0.0.53` is missing:
 
 ```sh
 grep -q '^nameserver 127.0.0.53' /etc/resolv.conf || sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
@@ -160,7 +155,7 @@ cd ~
 
 The installer puts everything under `~/.local/share/srnet-client`, adds `srnet` to
 `~/.local/bin` and adds `~/.local/bin` to your PATH for new terminals in `~/.bashrc` (and
-`~/.zshrc` if you have one; once, it says so). The `export PATH` line is only needed in the
+`~/.zshrc` if you have one). The `export PATH` line is only needed in the
 terminal you installed from. With `--with-exits` it also sets up Session Router for exits, which
 asks for your sudo password once (step 5); everything else needs no root.
 `~/SRNet-Desktop/install.sh --uninstall` removes it (including that PATH line) and keeps your
@@ -186,10 +181,7 @@ You need a little USDC on Arbitrum One or Base in any wallet (a phone wallet or 
 withdrawal both work), plus a little ETH on the same network for the network fee.
 
 `./install.sh --with-exits` also sets up Session Router for exits (it asks for your sudo password
-once): a persistent key, so your `.sesh` address and the time you pay for survive a restart, and
-`blackhole-routes=false`, so you stay reachable (SSH, RDP) while connected. The rest of
-`client.ini` stays as it is. If `srnet doctor` or `srnet buy` says it is missing, run
-`srnet setup-router` (safe to run again).
+once). If `srnet doctor` or `srnet buy` says it is missing, run `srnet setup-router`.
 
 ```sh
 srnet exits                            # list sellers; note a seller id
@@ -221,15 +213,11 @@ on `127.0.0.1:48920`:
 
 - **Home**: join a collection, your sidebar of rooms, boards, file drops, mail, and **Check my setup**.
 - **Add-on tabs**: an installed add-on can add its own tab, such as **Exits** from `srnet-exits`.
-  Its backend runs on a token-protected loopback port, and the app reaches it only through
-  its own origin.
 
 `srnet doctor` (and Check my setup) runs a read-only preflight: ports, the Session Router API on
 `127.0.0.1:1190`, `.sesh` DNS, a demo reachability probe, clock, disk and VPN/firewall, then the
 checks of any installed add-on. Each line is PASS/WARN/FAIL with a FIX hint; a report file is
 written for support.
-
-The page only answers to the link it prints.
 
 ## Command line
 
@@ -248,8 +236,7 @@ Details: [client-cli/README.md](client-cli/README.md).
 ## Files
 
 File drops are hosted by Storage Sellers: people who run a file drop on their own server.
-Uploads are encrypted by default (ChaCha20-Poly1305, a new random key per file, sizes padded to
-buckets, name and type sealed inside). With encryption on, the Storage Seller stores only
+Uploads are encrypted by default (ChaCha20-Poly1305). With encryption on, the Storage Seller stores only
 ciphertext. Choose per file:
 
 - **Only me and people I choose** (default): the file key is sealed to each person's key from
@@ -263,8 +250,7 @@ Revoking someone stops them getting future versions. It can't take back a copy t
 downloaded.
 
 Each Storage Seller sets its own largest file size (25 MiB by default) and may set a storage
-quota per uploader. The client reads the limit from the file drop's signed policy and refuses a
-larger file before uploading anything. Big files go up in 1 MiB chunks. If an upload is
+quota per uploader. If an upload is
 interrupted, uploading the same file again continues where it stopped.
 
 **Coming soon:** Storage Sellers will be able to turn off public hosting, so they hold only
@@ -294,16 +280,7 @@ money. Then **I paid: tell the seller** sends the seller an order with the trans
 owners can check a payment with `srnet verify` (exits add-on) or in the block explorer.
 
 Each order gets its own exact USDC amount: the price plus a random few millionths of a USDC
-(under one cent). The app never picks one of its own amounts from the past week again. The
-amount is random, not unique: two buyers can rarely land on the same one, which is fine because
-an order is matched by its transaction. The order names that amount and the transaction. When
-the seller checks an order, it only counts if the transaction pays exactly that amount on the
-listing's network, and no other order (in any of your stores paid to the same address) names the
-same transaction. If two orders name one transaction, both are shown as in dispute so the seller
-can ask the buyers. An open payment sheet is remembered for a week, so "I paid" still knows the
-exact amount after a restart. Pressing **Pay** again on the same item in that week (after
-closing the sheet or reloading the page) opens the same sheet with the same amount, unless the
-price or address has changed.
+(under one cent).
 
 - One payment is limited to 20 USDC by default (`"payments": {"max_usdc": "40"}` in
   `client.json` changes it).
@@ -322,10 +299,9 @@ The SNApps client starts with Home in the ribbon (plus a tab for each installed 
 
 - **Join**: on Home, paste a `.sesh` address (lists what that host offers) or an invite link
   `srnet://<name>.sesh/<type>/<collection>#root=<root key>`. The core fetches the host's signed delegation and
-  shows the name, type, host and root key; nothing is saved until you click Join. Links are strictly validated
-  (only `.sesh` hosts, known types, plain names, a 64-hex root).
+  shows the name, type, host and root key; nothing is saved until you click Join.
 - **Sidebar**: joined collections grouped by host, with unread counts. Rename, mute, pin, share and leave from the `⋯`
-  menu. State lives in the client's `prefs.json`; no restart or config edit needed.
+  menu.
 - **Trust on first use**: the root key is pinned the first time you join. If a host later presents a different root
   key, sync and posting stop and the collection shows a warning. Re-trust is explicit (type "trust the new key") and wipes
   that collection's cache.
@@ -333,8 +309,7 @@ The SNApps client starts with Home in the ribbon (plus a tab for each installed 
 - **Directories** (`directory` type): hosts list their own collection by signing a `directory.entry` with that
   collection's root key (`snapps/scripts/directory_entry.py`); entries signed by anyone else are ignored.
 - **Link handler**: `srnet open <link>` opens the join sheet in the running client. `install.sh` registers it for
-  `srnet://` on Linux (xdg). macOS needs an app bundle to own a URL scheme,
-  so there run `srnet open '<link>'` by hand.
+  `srnet://` on Linux (xdg). On macOS, run `srnet open '<link>'` by hand.
 
 ## Related repositories
 

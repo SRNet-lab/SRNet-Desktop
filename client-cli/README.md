@@ -5,8 +5,7 @@ For the normal install, use `./install.sh` at the top of this repository (see th
 [README](../README.md)); this page covers the command line in detail.
 
 Session Router is a separate prerequisite: install and run it yourself. Its API must answer on
-`127.0.0.1:1190`; `srnet doctor` checks it. This client never installs Session Router or sets it
-up as a service.
+`127.0.0.1:1190`; `srnet doctor` checks it.
 
 SRNet is an independent project. It is not affiliated with or endorsed by the Session Foundation
 or the Session Technology Foundation.
@@ -21,8 +20,7 @@ pip install ".[qr]"
 srnet doctor
 ```
 
-Dependencies: `cryptography` and `pyzmq` (and `qrcode` for payment QR codes). No wallet or
-chain libraries. Without installing, `python3 -m srnet` works from this directory once the
+Dependencies: `cryptography` and `pyzmq` (and `qrcode` for payment QR codes). Without installing, `python3 -m srnet` works from this directory once the
 dependencies are present. Settings live in `$SRNET_HOME` (default `~/.srnet`).
 
 ## Usage

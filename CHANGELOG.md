@@ -1,12 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Shorter README, client-cli README and donation page doc.
+
 ## [0.2.0] - 2026-10-20
 
 ### Added
 
 - Donation page for stores: donations of any amount in ETH (Ethereum, Arbitrum One or Base) or
-  USDC (Arbitrum One or Base). Each donation gets its own exact amount and a QR code, and it
-  counts as paid once two public RPCs agree the payment arrived. See
+  USDC (Arbitrum One or Base). Each donation gets its own exact amount and a QR code. See
   [snapps/docs/DONATE.md](snapps/docs/DONATE.md).
 - Exits are an optional add-on, `srnet-exits`, from
   [SRNet-VPSHost-ExitPack](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack). Install it with
@@ -36,8 +41,7 @@
 
 ### Fixed
 
-- `state.json` is written atomically and changed through a locked update, so one process can no
-  longer drop another's connection or DNS state.
+- One process can no longer drop another's connection or DNS state.
 - Donation page: refused requests close the connection, idle connections time out, and the page
   won't start with an empty ledger when it can't read the old one.
 - Shops: one exact amount per order, Pay again reuses the open payment sheet, and payment sheets
