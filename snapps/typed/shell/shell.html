@@ -15,6 +15,7 @@
 <main><section id="home" hidden><h2>Join a collection</h2>
   <p class="muted">Paste a .sesh address or an srnet:// link someone shared with you. The core fetches the host's signed info and shows it before anything is saved.</p>
   <input id="joinlink" size="70" maxlength="400" placeholder="srnet://….sesh/board/lobby#root=…"> <button id="join-go">Look up</button>
+  <p class="muted">Demo host: <code id="demo-host" title="Click to put it in the box">srnet7fqaajaqb6u7ho56znknysg5ime6kfbaymaaih4ba3q1ndo.sesh</code></p>
   <div id="choices"></div>
   <h3>Check my setup</h3><p class="muted">Checks Session Router (API on 127.0.0.1:1190), .sesh DNS, the demo host, your clock, disk and VPN/firewall. Read-only; it writes a report file you can send.</p>
   <button id="preflight-go">Check my setup</button> <span id="preflight-sum" class="muted"></span><pre id="preflight-out" class="log" hidden></pre>

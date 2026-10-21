@@ -33,5 +33,13 @@ class ShellCopy(unittest.TestCase):
         self.assertIn('api("pay/order"', js)
         self.assertNotIn("pay/confirm", js)
 
+    def test_home_shows_the_demo_host(self):
+        import json, re
+        html = (SHELL / "shell.html").read_text()
+        cfg = json.loads((SHELL.parent / "default-client.json").read_text())
+        host = re.match(r"http://([a-z0-9]+\.sesh)", cfg["mail"]["hosts"][0]).group(1)
+        self.assertIn(f'Demo host: <code id="demo-host" title="Click to put it in the box">{host}</code>', html)
+        self.assertIn('<button id="join-go">Look up</button>', html)
+
 if __name__ == "__main__":
     unittest.main()

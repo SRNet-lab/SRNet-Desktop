@@ -192,6 +192,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       $("preflight-out").textContent = r.text; $("preflight-out").hidden = false;
     } finally { $("preflight-go").disabled = false; } });
   $("join-go").addEventListener("click", () => joinFlow($("joinlink").value.trim()));
+  $("demo-host").addEventListener("click", () => { $("joinlink").value = $("demo-host").textContent; $("joinlink").focus(); });
   $("joinlink").addEventListener("keydown", (e) => { if (e.key === "Enter") joinFlow($("joinlink").value.trim()); });
   setInterval(side, 10000);
   $("modtoggle").addEventListener("click", async () => {
