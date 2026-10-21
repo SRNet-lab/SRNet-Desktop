@@ -1,14 +1,14 @@
 # SRNet client (v0.2 Beta)
 
-One app for SRNet: chat rooms, boards, wikis, mail, private files and other SNApps, over
-Session Router.
-
 **What's new**
 
 - No developer fee anywhere in SRNet.
 - Simpler payments: you pay the seller straight from your own wallet. No balance to top up, no
   contract and no escrow.
 - Exits are a separate add-on in their own repository, and this client works without them.
+
+One app for SRNet: chat rooms, boards, wikis, mail, private files and other SNApps, over
+Session Router.
 
 - **SNApps.** Boards, chat rooms, wikis, storefronts, file drops, profiles and plain-HTML
   `.sesh` pages. Hosts serve only signed data; the client ships the interface. Every record is
