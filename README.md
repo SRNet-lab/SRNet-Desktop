@@ -40,8 +40,7 @@ release.
 
 ### 1. Session Router
 
-Session Router carries all `.sesh` traffic. This installs the Session Foundation's
-`session-router-client` service with the SRNet build of the router, which adds what exits need
+Session Router carries all `.sesh` traffic. This installs the SRNet build of `session-router-client`, which adds the exit map
 (source: [Session-Router-SRNet](https://github.com/SRNet-lab/Session-Router-SRNet), branch
 `srnet/mapexit-dev`).
 
