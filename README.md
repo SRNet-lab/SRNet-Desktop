@@ -112,6 +112,10 @@ FAIL line is followed by a `FIX:` line that says what to do.
 joined. Leave that terminal open while you use the app, and press Ctrl-C there to stop it. Use a
 second terminal for other `srnet` commands. Run `srnet` as yourself, never with `sudo`.
 
+**Rejoin the demos.** If Lobby, Directory or Files go missing from your sidebar, paste the demo host's address into the Join box on the Home page:
+
+`srnet7fqaajaqb6u7ho56znknysg5ime6kfbaymaaih4ba3q1ndo.sesh`
+
 ### 5. Use an exit (optional)
 
 You need a few USDC on Arbitrum One or Base in any wallet (a phone wallet works), plus a little
@@ -131,8 +135,15 @@ add-on's [README](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack/blob/main/
 
 ### Update or remove
 
-Run `~/SRNet-Desktop/install.sh` again to update. `~/SRNet-Desktop/install.sh --uninstall`
-removes the app and keeps your settings in `~/.srnet`.
+To update:
+
+```sh
+cd ~/SRNet-Desktop && git pull && ./install.sh
+```
+
+Your settings in `~/.srnet` are kept, and the exits add-on updates with it.
+
+`~/SRNet-Desktop/install.sh --uninstall` removes the app and keeps your settings in `~/.srnet`.
 
 To stop Session Router from starting at boot: `sudo systemctl disable session-router-client`.
 Start it yourself with `sudo systemctl start session-router-client`.
