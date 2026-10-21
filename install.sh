@@ -76,7 +76,9 @@ fi
 "$VPY" -m pip install --quiet "$PREFIX/app/client-cli[qr]"
 if [ "$WITH_EXITS" = 1 ] || [ "$HAD_EXITS" = 1 ]; then
   echo "Installing the exits add-on"
-  "$VPY" -m pip install --quiet --upgrade "$EXITS_SRC"
+  # pip skips a git install whose version number hasn't changed, so reinstall it to pick up new commits.
+  "$VPY" -m pip install --quiet --upgrade --force-reinstall --no-deps "$EXITS_SRC"
+  "$VPY" -m pip install --quiet "$EXITS_SRC"
 fi
 
 cat > "$BIN/srnet" <<W

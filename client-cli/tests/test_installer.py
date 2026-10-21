@@ -64,8 +64,10 @@ class InstallSh(unittest.TestCase):
         r = self.run_install("--with-exits")
         self.assertEqual(r.returncode, 0, r.stderr)
         addon = [l for l in self.pip_installs() if "srnet-exits" in l]
-        self.assertEqual(len(addon), 1)
-        self.assertIn("srnet-exits @ git+https://github.com/SRNet-lab/", addon[0])
+        self.assertEqual(len(addon), 2)  # reinstall (picks up new commits), then its dependencies
+        self.assertIn("--force-reinstall --no-deps", addon[0])
+        for l in addon:
+            self.assertIn("srnet-exits @ git+https://github.com/SRNet-lab/", l)
         self.assertFalse(any(l.split()[-1] in ("srnet-client", "srnet-exits") for l in self.pip_installs()))
 
     def router_calls(self):
