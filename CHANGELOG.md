@@ -5,6 +5,8 @@
 ### Changed
 
 - Shorter README, client-cli README and donation page doc.
+- The README walks through install and first use step by step, with the details at the end.
+- Clearer wording in the client-cli README, help text and code comments.
 
 ## [0.2.0] - 2026-10-20
 

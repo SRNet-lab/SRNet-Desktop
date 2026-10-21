@@ -37,7 +37,7 @@ def _client(data) -> MailClient:
         contacts, hosts = mcfg.get("contacts", []), mcfg.get("hosts", [])
     except Exception:
         contacts, hosts = [], []
-    # same default mail host as the app (default-client.json), used until you set your own
+    # same demo mail host as the app (default-client.json), used until you set your own
     return MailClient(d / "mail", kp.read_bytes(), hosts, contacts=contacts)
 
 
@@ -69,7 +69,7 @@ def main(argv=None) -> int:
                 print("\n".join(mc.st["hosts"]) or "(no mail hosts set)")
         elif a.c == "address":
             link = mc.link(a.name)
-            for h, r in mc.ensure_registered().items():  # open your inbox on the default host
+            for h, r in mc.ensure_registered().items():  # open your inbox on the demo host
                 if r != "ok":
                     print(f"note: inbox on {h} not opened yet ({r}); `srnet mail fetch` retries",
                           file=sys.stderr)

@@ -7,7 +7,7 @@
   srnet mail ...           sealed mail from the command line (srnet mail -h)
   srnet snapps             alias of `srnet ui` that doesn't open a browser
 
-Exits (buying time on an SRNet exit and routing your traffic through it) are an add-on:
+Exits (buying time on an exit and routing your traffic through it) are an add-on:
 srnet-exits. Once it is installed, `srnet exits`, `srnet buy`, `srnet connect` and friends
 appear here, and the app gets an Exits tab.
 """

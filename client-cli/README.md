@@ -1,27 +1,26 @@
 # srnet
 
-The SRNet client: `srnet ui` (the app), `srnet doctor` and `srnet mail` from the command line.
-For the normal install, use `./install.sh` at the top of this repository (see the main
-[README](../README.md)); this page covers the command line in detail.
+The SRNet client's `srnet` command: `srnet ui` (the app), `srnet doctor` and `srnet mail`. To
+install, follow the main [README](../README.md); this page covers the command line in detail.
 
-Session Router is a separate prerequisite: install and run it yourself. Its API must answer on
-`127.0.0.1:1190`; `srnet doctor` checks it.
+Session Router has to be installed and running first (steps 1 and 2 of the main README).
+`srnet doctor` checks it.
 
 SRNet is an independent project. It is not affiliated with or endorsed by the Session Foundation
 or the Session Technology Foundation.
 
 ## Install without install.sh
 
-Needs Python 3.10+.
+Needs Python 3.10 or newer. From the top of this repository:
 
 ```sh
-cd client-cli
-pip install ".[qr]"
-srnet doctor
+python3 -m venv ~/srnet-venv
+~/srnet-venv/bin/pip install "./client-cli[qr]"
+~/srnet-venv/bin/srnet doctor
 ```
 
-Dependencies: `cryptography` and `pyzmq` (and `qrcode` for payment QR codes). Without installing, `python3 -m srnet` works from this directory once the
-dependencies are present. Settings live in `$SRNET_HOME` (default `~/.srnet`).
+Dependencies: `cryptography` and `pyzmq` (and `qrcode` for payment QR codes). Settings live in
+`$SRNET_HOME` (default `~/.srnet`).
 
 ## Usage
 
@@ -35,13 +34,14 @@ srnet mail ...                         sealed mail (srnet mail -h)
 ## Add-ons
 
 Extra commands and app tabs come from add-ons: Python packages with an entry point in the
-`srnet.addons` group. The SRNet exits add-on is `srnet-exits`:
+`srnet.addons` group. The exits add-on is `srnet-exits`:
 
 ```sh
-python -m pip install "srnet-exits @ git+https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack"
+./install.sh --with-exits
 ```
 
-(use the Python the client runs with; `./install.sh --with-exits` does this for you). It adds
+or by hand, with the Python the client runs with:
+`python -m pip install "srnet-exits @ git+https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack"`. It adds
 `srnet exits`, `srnet buy`, `srnet paid`, `srnet connect`, `srnet status`, `srnet disconnect` and
 `srnet verify`, its own `srnet doctor` checks, and an Exits tab. Without it those commands print
 the install line and exit.

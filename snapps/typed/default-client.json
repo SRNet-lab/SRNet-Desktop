@@ -1,5 +1,5 @@
 {
-  "_about": "Shipped default config. Lobby and directory are pre-joined and pinned to their root keys; mail.hosts is the default mail host; mail.contacts are first contacts (added once, so mail from them lands in Inbox; a user \"contacts\" list replaces them and a removed one stays removed). A user config (srnet ui --config FILE, or <home>/client.json) is layered on top: entries with the same id override these, {\"id\": \"lobby\", \"disabled\": true} drops one.",
+  "_about": "Shipped default config. Lobby and directory are pre-joined and pinned to their root keys; mail.hosts is the demo mail host; mail.contacts are first contacts (added once, so mail from them lands in Inbox; a user \"contacts\" list replaces them and a removed one stays removed). A user config (srnet ui --config FILE, or <home>/client.json) is layered on top: entries with the same id override these, {\"id\": \"lobby\", \"disabled\": true} drops one.",
   "defaults_version": 1,
   "collections": [
     {"id": "lobby", "label": "Lobby", "kind": "room", "name": "lobby",

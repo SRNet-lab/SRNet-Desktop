@@ -114,7 +114,7 @@ class MailClient:
         return out
 
     def ensure_registered(self) -> dict:
-        """Open an inbox on any host not yet registered (e.g. the shipped default host), so
+        """Open an inbox on any host not yet registered (e.g. the shipped demo host), so
         people can write to you before you ever run `mail hosts`. Best effort; retried later."""
         todo = [h for h in self.st["hosts"] if h not in self.st.setdefault("registered", [])]
         out = {}

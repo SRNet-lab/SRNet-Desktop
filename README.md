@@ -9,79 +9,41 @@
 
 Full history: [CHANGELOG.md](CHANGELOG.md)
 
-One app for SRNet: chat rooms, boards, wikis, mail, private files and other SNApps, over
-Session Router.
+SRNet is one app for chat rooms, message boards, wikis, mail, private files and small shops. It
+runs on Session Router, a private network where every site has a `.sesh` address.
 
-- **SNApps.** Boards, chat rooms, wikis, storefronts, file drops, profiles and plain-HTML
-  `.sesh` pages. Hosts serve only signed data; the client ships the interface. Every record is
-  signature-checked, every template runs in a sandbox with no network access, and HTML pages
-  open in a viewer that strips all scripts.
-- **Mail.** Messages to anyone's SRNet address are sealed on your computer with
-  ChaCha20-Poly1305 before they're sent, and mail hosts store them until the recipient comes
-  online. Hosts can't read your mail or see who sent it. Senders sign every message.
-- **Private files.** File drops are encrypted on your computer with ChaCha20-Poly1305 before
-  upload. Share with chosen people, with anyone who has the link, or publish unencrypted if you
-  choose.
+- **SNApps.** Boards, chat rooms, wikis, storefronts, file drops, profiles and plain `.sesh`
+  web pages. Hosts only store signed data; the app on your computer shows it and checks every
+  signature.
+- **Mail.** Mail is encrypted on your computer before it's sent. The hosts that hold it until
+  the recipient comes online can't read it or see who sent it.
+- **Private files.** Files are encrypted on your computer before upload. Share them with chosen
+  people, with anyone who has the link, or publish them unencrypted.
 - **Shops.** A storefront shows each item's price with a payment address, the exact amount and
-  a QR code. You pay from your own wallet; the client never holds money.
-- **Exits (add-on).** Buying time on an SRNet exit and sending your traffic through it is a
-  separate add-on, `srnet-exits`, from
-  [SRNet-VPSHost-ExitPack](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack). Install it with
-  `./install.sh --with-exits`. Without it, this client has no wallet and no payment code. The
-  add-on also runs on its own as `srnet-exits`, without this client.
+  a QR code. You pay from your own wallet; the app never holds money.
+- **Exits (add-on).** Buy time on an exit and send your internet traffic through it, like a VPN.
+  This is a separate add-on, `srnet-exits`, from
+  [SRNet-VPSHost-ExitPack](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack).
 
 SRNet is beta software.
 
 SRNet is an independent project. It is not affiliated with or endorsed by the Session Foundation
 or the Session Technology Foundation.
 
-## Mail
-
-Your mail address is your SRNet identity key plus the 1 to 3 mail hosts you pick, shared as a
-`srnet://mail/...` link. Open **Mail** at the top of the SNApps sidebar, or use the command line:
-
-```sh
-srnet mail hosts http://<mail host> [http://<backup host>]   # set your hosts and register
-srnet mail address --name "Alice"                            # your srnet://mail link to share
-srnet mail send 'srnet://mail/...' -s "Hello" -m "Hi Bob"
-srnet mail fetch && srnet mail list && srnet mail read <id>
-srnet mail list requests && srnet mail accept <id>
-srnet mail name 'srnet://room/...' "Bob's room"              # local petname for any srnet:// address
-```
-
-- Each message is signed with your key, then sealed to the recipient's key (X25519 +
-  ChaCha20-Poly1305) and padded to a size bucket (1 KiB to 64 KiB). A mail host sees only
-  the recipient key, the message id, the padded size and the time.
-- Messages go to every host on the recipient's list; your client drops duplicates.
-- New installs start with one contact, **SRNet** (the team inbox): `srnet mail send SRNet -s "Hi" -m "..."`.
-- Hosts keep mail 7 days by default (30 at most). Your client keeps it sealed on disk.
-- Only the owner's key can list or fetch an inbox.
-- Mail from your contacts goes to **Inbox**. Mail from anyone else goes to **Requests**, which
-  has tighter limits (32 messages, 16 KiB each, 20 per hour). Accepting a sender moves them
-  to your inbox on every host.
-- **Attach** a file in the Mail page and it is encrypted on your computer and stored on a file
-  drop you've joined (no public listing). Only the key-in-link goes inside the sealed message,
-  so only your recipients can open it. The size limit is set by the Storage Seller running that file drop (25 MiB by default). You can also paste file-drop links.
-- Petnames are local only.
-
-Wire format and host API: [`snapps/docs/MAIL.md`](snapps/docs/MAIL.md).
-
 ## Install
 
-These steps are for a fresh Ubuntu 24.04 desktop (amd64), the supported platform for this
-release. We recommend a dedicated machine or drive for SRNet. Run the blocks below in a terminal,
-top to bottom. Each block starts in your home folder.
+These steps are for Ubuntu 24.04 desktop (amd64). Open a terminal and run each block in order.
+Each block starts in your home folder. We recommend a dedicated machine or drive for SRNet.
 
-macOS works for SNApps, mail and files; routing traffic through an exit
-(`srnet connect`, in the exits add-on) uses nftables and is Linux-only. Windows is not supported in this release.
+macOS works for SNApps, mail and files, but not for exits. Windows is not supported in this
+release.
 
 ### 1. Session Router
 
-SRNet runs on top of Session Router, which carries all `.sesh` traffic. Install the Session
-Foundation's `session-router-client` service together with the SRNet build of the router binary
-(the Foundation's Session Router plus exit mapping, so `srnet connect` can send your traffic through
-an exit; source and build details:
-[Session-Router-SRNet](https://github.com/SRNet-lab/Session-Router-SRNet), branch `srnet/mapexit-dev`).
+Session Router carries all `.sesh` traffic. This installs the Session Foundation's
+`session-router-client` service with the SRNet build of the router, which adds what exits need
+(source: [Session-Router-SRNet](https://github.com/SRNet-lab/Session-Router-SRNet), branch
+`srnet/mapexit-dev`).
 
 ```sh
 cd ~
@@ -99,17 +61,12 @@ echo "5c1c9b553b25649657f9f8e3ae0431aa3fe0534c82e65214588c728307bf3237  session-
 cd ~
 ```
 
-You should see `checksum OK` before apt starts. If the check fails, nothing gets installed:
-re-download and run the chained lines again. The hold keeps apt from swapping the stock router
-binary back in on an upgrade.
-
-The package sets up `session-router-client.service`, starts it now and enables it at boot (see
-[Starting and stopping Session Router](#starting-and-stopping-session-router) to change that later).
+You should see `checksum OK` before apt starts. If you don't, nothing was installed: download it
+again and rerun the lines from `curl -fLO` down. Session Router starts now and at every boot.
 
 ### 2. `.sesh` names
 
-Ubuntu's resolver (systemd-resolved) does not send `.sesh` names to Session Router on its own.
-Add this once so it does, every time the service starts:
+This tells Ubuntu to send `.sesh` names to Session Router:
 
 ```sh
 cd ~
@@ -117,206 +74,155 @@ sudo mkdir -p /etc/systemd/system/session-router-client.service.d
 printf '[Service]\nExecStartPost=+/bin/sh -c "sleep 3; resolvectl dns sr-tun0 127.3.2.1; resolvectl domain sr-tun0 ~sesh ~snode; resolvectl default-route sr-tun0 false"\n' | sudo tee /etc/systemd/system/session-router-client.service.d/dns.conf
 sudo systemctl daemon-reload
 sudo systemctl restart session-router-client
-```
-
-Programs look names up through `/etc/resolv.conf`. On a stock Ubuntu desktop it already points
-at systemd-resolved (`nameserver 127.0.0.53`). Some cloud and VPS images ship a fixed file with
-the provider's DNS servers instead, so `.sesh` lookups never reach systemd-resolved. This links it
-back only if `127.0.0.53` is missing:
-
-```sh
 grep -q '^nameserver 127.0.0.53' /etc/resolv.conf || sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
-grep nameserver /etc/resolv.conf   # now shows 127.0.0.53
 ```
 
-Only `.sesh` and `.snode` names go to Session Router; all other DNS is unchanged (while
-`srnet connect` is up, srnet sends all of it to the exit's own resolver through the tunnel). Check
-that the router API is listening and `.sesh` names resolve:
+The last line only matters on some cloud and VPS images, which ship their own DNS settings.
+Other names are not affected. Check that it works:
 
 ```sh
-ss -ltn | grep 1190           # something listening on 127.0.0.1:1190
-getent hosts localhost.sesh   # prints an fd2e:... address
+getent hosts localhost.sesh   # prints an address starting with fd2e:
 ```
 
-Other systems: see the upstream install guide at
-https://github.com/session-foundation/session-router/blob/dev/docs/install.md
-
-### 3. The SRNet client
+### 3. The SRNet app
 
 ```sh
 cd ~
-sudo apt install -y git python3-venv nftables   # nftables: the kill switch used by srnet connect
+sudo apt install -y git python3-venv nftables
 git clone https://github.com/SRNet-lab/SRNet-Desktop.git
 cd SRNet-Desktop
-./install.sh --with-exits                       # or plain ./install.sh without the exits add-on
+./install.sh --with-exits      # or plain ./install.sh if you don't want exits
 export PATH="$HOME/.local/bin:$PATH"
 cd ~
 ```
 
-The installer puts everything under `~/.local/share/srnet-client`, adds `srnet` to
-`~/.local/bin` and adds `~/.local/bin` to your PATH for new terminals in `~/.bashrc` (and
-`~/.zshrc` if you have one). The `export PATH` line is only needed in the
-terminal you installed from. With `--with-exits` it also sets up Session Router for exits, which
-asks for your sudo password once (step 5); everything else needs no root.
-`~/SRNet-Desktop/install.sh --uninstall` removes it (including that PATH line) and keeps your
-settings in `~/.srnet`. Running `./install.sh` again later upgrades the client and, if it is
-installed, the exits add-on.
+With `--with-exits` it asks for your password once, to set up Session Router for exits. The
+`export PATH` line is only needed in this terminal; new terminals find `srnet` by themselves.
 
 ### 4. First run
 
 ```sh
-srnet doctor      # checks Session Router, .sesh DNS, that the demo lobby answers, the clock
-                  # and free disk (and the exits add-on, if installed); writes a report
-srnet ui          # open the app in your browser
+srnet doctor
+srnet ui
 ```
 
-The app opens with the demo lobby, directory and mail already joined. `srnet ui` keeps running in
-that terminal while you use the app (it is the app's local server); leave it open, use a second
-terminal for other `srnet` commands, and press Ctrl-C there when you want to stop the app.
-Run `srnet` commands as yourself, never with `sudo`: the steps that need root ask for it.
+`srnet doctor` checks your setup and ends with `PREFLIGHT=OK` when everything is ready. A WARN or
+FAIL line is followed by a `FIX:` line that says what to do.
 
-### 5. Use an exit (exits add-on)
+`srnet ui` opens the app in your browser, with the demo lobby, directory and mail host already
+joined. Leave that terminal open while you use the app, and press Ctrl-C there to stop it. Use a
+second terminal for other `srnet` commands. Run `srnet` as yourself, never with `sudo`.
 
-You need a little USDC on Arbitrum One or Base in any wallet (a phone wallet or an exchange
-withdrawal both work), plus a little ETH on the same network for the network fee.
+### 5. Use an exit (optional)
 
-`./install.sh --with-exits` also sets up Session Router for exits (it asks for your sudo password
-once). If `srnet doctor` or `srnet buy` says it is missing, run `srnet setup-router`.
+You need a few USDC on Arbitrum One or Base in any wallet (a phone wallet works), plus a little
+ETH on the same network for the network fee.
 
 ```sh
-srnet exits                            # list sellers; note a seller id
+srnet exits                            # list sellers; copy a seller id
 srnet buy --seller <id> --hours 1      # shows the address, exact amount and a QR code
-                                       # pay it from your wallet; the client waits for the seller
-srnet connect <id>                     # route traffic and DNS through the exit (asks for sudo itself;
-                                       # SSH/RDP sessions to this machine keep working)
+srnet connect <id>                     # send your traffic through the exit (asks for your password)
 curl -s https://api.ipify.org; echo    # prints the exit's IP address
 srnet disconnect                       # back to your normal connection
 ```
 
-The **Exits** tab in the app does the same with buttons. More in the add-on's
-[README](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack/blob/main/client/README.md).
+After `buy`, send exactly the amount shown from your wallet and leave the terminal open until it
+says the seller confirmed. The **Exits** tab in the app does the same with buttons. More in the
+add-on's [README](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack/blob/main/client/README.md).
 
-### Starting and stopping Session Router
+### Update or remove
 
-Not part of the install; for later, if you don't want Session Router running all the time:
+Run `~/SRNet-Desktop/install.sh` again to update. `~/SRNet-Desktop/install.sh --uninstall`
+removes the app and keeps your settings in `~/.srnet`.
 
-```text
-sudo systemctl disable session-router-client   # no autostart at boot
-sudo systemctl start session-router-client     # start it yourself
-sudo systemctl stop session-router-client      # stop it
+To stop Session Router from starting at boot: `sudo systemctl disable session-router-client`.
+Start it yourself with `sudo systemctl start session-router-client`.
+
+## Using the app
+
+### Joining
+
+The app starts with Home and the collections it ships with. To join something else, paste a
+`.sesh` address or an invite link (`srnet://...`) on Home. The app shows the host and what it
+offers, and nothing is saved until you click **Join**. From a terminal, `srnet open '<link>'`
+opens the same join sheet.
+
+The first time you join, the app remembers the host's key. If the key changes later, the app stops
+syncing that collection and asks you before trusting the new one.
+
+### Mail
+
+Your mail address is a `srnet://mail/...` link. Open **Mail** at the top of the sidebar to see
+and share it. New installs start with one contact, **SRNet** (the team inbox).
+
+Mail from your contacts goes to **Inbox**. Mail from anyone else goes to **Requests** until you
+accept the sender. Mail hosts keep messages 7 days by default.
+
+From the command line:
+
+```sh
+srnet mail address --name "Alice"                            # your link to share
+srnet mail send 'srnet://mail/...' -s "Hello" -m "Hi Bob"
+srnet mail fetch && srnet mail list && srnet mail read <id>
+srnet mail hosts http://<mail host> [http://<backup host>]   # pick your own mail hosts (1 to 3)
 ```
 
-## The app
+### Files
 
-`srnet ui` (or plain `srnet`; `srnet snapps` is an alias) is the one app. It opens SNApps on Home
-on `127.0.0.1:48920`:
+File drops are run by Storage Sellers: people who host a file drop on their own server. Files are
+encrypted on your computer before upload. For each file, choose:
 
-- **Home**: join a collection, your sidebar of rooms, boards, file drops, mail, and **Check my setup**.
-- **Add-on tabs**: an installed add-on can add its own tab, such as **Exits** from `srnet-exits`.
-
-`srnet doctor` (and Check my setup) runs a read-only preflight: ports, the Session Router API on
-`127.0.0.1:1190`, `.sesh` DNS, a demo reachability probe, clock, disk and VPN/firewall, then the
-checks of any installed add-on. Each line is PASS/WARN/FAIL with a FIX hint; a report file is
-written for support.
-
-## Command line
-
-```
-srnet ui [--config F]            the app; `snapps` is an alias
-srnet doctor                     check setup
-srnet open <link>                open an srnet:// link (shows the join sheet)
-srnet mail ...                   sealed mail (srnet mail -h)
-```
-
-With the exits add-on: `srnet exits`, `srnet buy`, `srnet paid`, `srnet connect`,
-`srnet status`, `srnet disconnect` and `srnet verify`. Without it, those print how to install it.
-
-Details: [client-cli/README.md](client-cli/README.md).
-
-## Files
-
-File drops are hosted by Storage Sellers: people who run a file drop on their own server.
-Uploads are encrypted by default (ChaCha20-Poly1305). With encryption on, the Storage Seller stores only
-ciphertext. Choose per file:
-
-- **Only me and people I choose** (default): the file key is sealed to each person's key from
-  their SRNet profile. Add people later, or approve someone's access request.
-- **Anyone with the link**: the key rides in the link after `#`, so the Storage Seller never sees it.
-- **Not encrypted**: for content meant to be public and indexable.
+- **Only me and people I choose** (default). You can add people later.
+- **Anyone with the link.** The key is in the link, so the Storage Seller never sees it.
+- **Not encrypted.** For files meant to be public.
 
 ![A file drop in the SRNet client with three files: a public readme, meeting notes shared with invited people only, and trip photos shared with anyone who has the link](docs/images/storage.png)
 
-Revoking someone stops them getting future versions. It can't take back a copy they already
-downloaded.
-
-Each Storage Seller sets its own largest file size (25 MiB by default) and may set a storage
-quota per uploader. If an upload is
-interrupted, uploading the same file again continues where it stopped.
+Removing someone stops them getting future versions, not copies they already downloaded. Each
+Storage Seller sets its own largest file size (25 MiB by default). In Mail, **Attach** stores the
+file encrypted on a file drop you've joined and sends only the key.
 
 **Coming soon:** Storage Sellers will be able to turn off public hosting, so they hold only
-encrypted files they can't read. The client will also let you move or copy all your files from
-one Storage Seller to another, and keep them synced across several Storage Sellers so they stay
-available if one goes down.
+encrypted files they can't read. The app will also let you move or copy your files between
+Storage Sellers and keep them on several at once.
 
-## Moderation, room headers and pins
+### Shops
 
-Hosts can act on content in three ways, each a signed, public record:
+**Pay** shows the network, the address, the exact amount and a QR code for a phone wallet. You
+pay from your own wallet and pay the network fee. Then **I paid: tell the seller** sends the
+seller your order with the transaction. Real payments are USDC on Arbitrum One or Base. Payments
+are final.
 
-- **Hide**: the post stays on the host and keeps syncing. Your client honours hides by default,
-  and you can choose to show a hidden post anyway.
-- **Remove**: for illegal content, doxxing or credible threats. The host deletes the post text,
-  or a file's bytes, at once. Mirrors and clients delete their copies when they next sync. The
-  post shows as "Removed by host: <reason>", and no setting brings it back.
-- **Pin**: up to 3 posts shown at the top of a room or board.
+One payment is limited to 20 USDC by default. To change it, put
+`"payments": {"max_usdc": "40"}` in `~/.srnet/client.json`.
 
-Rooms also show a host-signed header with the room's description and rules.
+### Moderation
 
-## Paying in shops
+Hosts can **hide** a post (your app hides it, and you can still choose to show it), **remove**
+illegal content (deleted everywhere on the next sync), and **pin** up to 3 posts. Every action is
+a signed, public record.
 
-Shop items carry a price in USDC (Arbitrum One or Base) or ETH, and the seller's own address.
-**Pay** shows the network, the address, the exact amount and a QR code for a phone wallet
-(EIP-681). You pay from your own wallet and pay the network fee; the client never holds or moves
-money. Then **I paid: tell the seller** sends the seller an order with the transaction hash. Shop
-owners can check a payment with `srnet verify` (exits add-on) or in the block explorer.
+## Details
 
-Each order gets its own exact USDC amount: the price plus a random few millionths of a USDC
-(under one cent).
-
-- One payment is limited to 20 USDC by default (`"payments": {"max_usdc": "40"}` in
-  `client.json` changes it).
-- ETH prices only work on test networks. Real payments are USDC.
-- Payments are final; there are no refunds through SRNet.
-- Items from shops that still use the old SRNet balance show "seller needs to update".
-
-**Old SRNet balance.** Earlier versions kept USDC in an SRNet balance on Arbitrum One. That is
-gone. If you have USDC left there, the exits repository has a small tool to send it back to your
-wallet until 2027-01-18:
-[contrib/legacy-cashout](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack/tree/main/contrib/legacy-cashout).
-
-## Joining collections
-
-The SNApps client starts with Home in the ribbon (plus a tab for each installed add-on). Everything else is something you joined:
-
-- **Join**: on Home, paste a `.sesh` address (lists what that host offers) or an invite link
-  `srnet://<name>.sesh/<type>/<collection>#root=<root key>`. The core fetches the host's signed delegation and
-  shows the name, type, host and root key; nothing is saved until you click Join.
-- **Sidebar**: joined collections grouped by host, with unread counts. Rename, mute, pin, share and leave from the `⋯`
-  menu.
-- **Trust on first use**: the root key is pinned the first time you join. If a host later presents a different root
-  key, sync and posting stop and the collection shows a warning. Re-trust is explicit (type "trust the new key") and wipes
-  that collection's cache.
-- **Share** makes an invite link carrying the pinned root key, so the receiver verifies the same key.
-- **Directories** (`directory` type): hosts list their own collection by signing a `directory.entry` with that
-  collection's root key (`snapps/scripts/directory_entry.py`); entries signed by anyone else are ignored.
-- **Link handler**: `srnet open <link>` opens the join sheet in the running client. `install.sh` registers it for
-  `srnet://` on Linux (xdg). On macOS, run `srnet open '<link>'` by hand.
+- **Command line:** `srnet ui`, `srnet doctor`, `srnet open <link>` and `srnet mail ...`. With the
+  exits add-on also `srnet exits`, `buy`, `paid`, `connect`, `status`, `disconnect` and `verify`.
+  See [client-cli/README.md](client-cli/README.md).
+- **Encryption:** mail is signed with your key, then sealed to the recipient's key (X25519 +
+  ChaCha20-Poly1305) and padded to a fixed size bucket. Files use ChaCha20-Poly1305. Wire format:
+  [`snapps/docs/MAIL.md`](snapps/docs/MAIL.md).
+- **Directories:** hosts list their own collection by signing a `directory.entry` with that
+  collection's root key (`snapps/scripts/directory_entry.py`).
+- **Old SRNet balance:** earlier versions kept USDC in an SRNet balance on Arbitrum One. That is
+  gone. If you have USDC left there, the exits repository has a tool to send it back to your
+  wallet until 2027-01-18:
+  [contrib/legacy-cashout](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack/tree/main/contrib/legacy-cashout).
 
 ## Related repositories
 
 - [Session-Router-SRNet](https://github.com/SRNet-lab/Session-Router-SRNet): the Session Router
   build used in the install steps above, with exit mapping added.
 - [SRNet-VPSHost-ExitPack](https://github.com/SRNet-lab/SRNet-VPSHost-ExitPack): the exits
-  add-on for this client, and the pack for running your own paid exit and listing it on the
+  add-on for this app, and the pack for running your own paid exit and listing it on the
   exit board.
 - [SRNet-TypedSNApp-HostPack](https://github.com/SRNet-lab/SRNet-TypedSNApp-HostPack): run your
   own host for boards, stores, wikis, chat rooms, file drops, profiles, directories or mail.
