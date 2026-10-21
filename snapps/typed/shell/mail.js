@@ -74,14 +74,18 @@ $("c-send").addEventListener("click", async () => {
 $("c-cancel").addEventListener("click", () => { replyTo = null; showFolder(folder); });
 $("m-compose-btn").addEventListener("click", () => { replyTo = null; compose(); });
 for (const b of document.querySelectorAll(".m-folder")) b.addEventListener("click", () => showFolder(b.dataset.f));
-$("m-fetch").addEventListener("click", async () => {
-  try { const r = await api("fetch"); status(r.new + " new" + (r.rejected.length ? ", " + r.rejected.length + " rejected (bad signature or not for you)" : "") + (Object.keys(r.errors).length ? ", some hosts unreachable" : "")); refresh(); }
-  catch (e) { status(e.message); }
-});
+async function checkMail(quiet) {
+  try { const r = await api("fetch");
+    if (!quiet || r.new) status(r.new + " new" + (r.rejected.length ? ", " + r.rejected.length + " rejected (bad signature or not for you)" : "") + (Object.keys(r.errors).length ? ", some hosts unreachable" : ""));
+    if (!quiet) refresh(); else if (r.new) { refresh_counts(); if (!$("m-list").hidden) showFolder(folder); } }
+  catch (e) { if (!quiet) status(e.message); }
+}
+$("m-fetch").addEventListener("click", () => checkMail(false));
+setInterval(() => checkMail(true), 60000); // new mail shows up without pressing Check mail
 $("m-hosts-save").addEventListener("click", async () => {
   try { await api("hosts", {hosts: $("m-hosts").value.split(/\s+/).filter(Boolean)}); status("hosts saved"); refresh(); } catch (e) { status(e.message); }
 });
 $("m-add").addEventListener("click", async () => {
   try { await api("contact", {link: $("m-add-link").value.trim(), name: $("m-add-name").value.trim() || undefined}); $("m-add-link").value = ""; refresh(); } catch (e) { status(e.message); }
 });
-refresh().catch((e) => status(e.message));
+refresh().then(() => checkMail(true)).catch((e) => status(e.message));

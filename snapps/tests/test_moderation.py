@@ -99,6 +99,19 @@ class Remove(unittest.TestCase):
             F.make_mod(h.key, board, "remove", "author", host_pub, "")
         self.assertIsNotNone(self.b.sync("board"))
 
+    def test_removed_posts_keep_the_sidebar_working(self):
+        h = self.env["board"]
+        p = self.post(self.a, "board", "board.post", {"text": "to be removed", "reply_to": None})
+        h.push()
+        h.moderate("remove", "post", p["id"], "spam")
+        h.push()
+        c = T.new_core(self.env, "dave-" + os.urandom(3).hex())  # joins with nothing read yet
+        self.assertIsNone(c.sync("board")["board"]["error"])
+        self.assertEqual(c.colls["board"].store.get(p["id"])["tomb"]["by"], "remove")
+        self.assertIsInstance(c.unread("board"), int)
+        names = [i["id"] for g in c.sidebar()["groups"] for i in g["items"]]
+        self.assertIn("board", names)
+
     def test_remove_file_deletes_blob(self):
         data = b"FILEBYTES-" + os.urandom(8).hex().encode()
         r = self.a.upload("files", data, "f.txt", "text/plain", "", mode="plain")["result"]

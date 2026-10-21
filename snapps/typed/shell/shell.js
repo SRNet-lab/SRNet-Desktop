@@ -122,7 +122,9 @@ function findItem(id) { for (const g of SIDE.groups) for (const i of g.items) if
 async function side() {
   api("mail/summary", {}).then((m) => { const n = (m.unread || {}).inbox || 0, q = (m.unread || {}).requests || 0;
     $("side-mail-n").textContent = n || q ? "(" + n + (q ? " + " + q + " requests" : "") + ")" : ""; }).catch(() => {});
-  SIDE = await api("sidebar"); SIDE.loaded = true; const box = $("groups"); box.replaceChildren();
+  const r = await api("sidebar").catch(() => null);
+  if (!r || !Array.isArray(r.groups)) { $("status").textContent = "couldn't refresh the list: " + ((r && r.error) || "no reply"); return; }
+  SIDE = r; SIDE.loaded = true; const box = $("groups"); box.replaceChildren();
   SIDE.groups = SIDE.groups.map((g) => ({...g, items: g.items.map((i) => ({...i, name: i.id, host: g.host}))}));
   SIDE.groups.forEach((g) => { const h = el("div", g.short); h.className = "host"; h.title = g.host; box.appendChild(h);
     g.items.forEach((i) => {

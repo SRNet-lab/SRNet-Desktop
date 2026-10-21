@@ -391,8 +391,9 @@ class Core:
             return 0
         items, _ = self._items(c)
         mark = ent.get("read_seq", 0)
-        return sum(1 for it in items if it["seq"] > mark and it["author"] != self.me
-                   and not it["t"].endswith(".profile"))
+        # Removed posts stay in the log as tombstones with no author; they never count as unread.
+        return sum(1 for it in items if it["seq"] > mark and it["t"] != "tombstone"
+                   and it.get("author") != self.me and not it["t"].endswith(".profile"))
 
     def mark_read(self, cid):
         c, ent = self.colls[cid], self.prefs["joined"].get(cid)

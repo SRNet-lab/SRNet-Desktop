@@ -225,6 +225,17 @@ class E2E(unittest.TestCase):
         self.assertEqual(self.bob.open(m["msg_id"])["attach"], [att])
         self.no_plaintext_on_disk([SECRET, "Plans", "see attached", "attached!"])
 
+    def test_first_send_opens_an_inbox_for_the_reply(self):
+        carol = MailClient(os.path.join(self.t, "carol"), os.urandom(32), [self.urls[0]])
+        self.assertEqual(carol.st["registered"], [])  # fresh install: never pressed Check mail
+        self.assertTrue(carol.send(self.bob.link("Bob"), "hi", "first mail")["ok"])
+        self.assertEqual(carol.st["registered"], [self.urls[0]])
+        self.bob.fetch()
+        r = self.bob.reply(self.bob.folder("requests")[0]["msg_id"], "got it")
+        self.assertTrue(r["ok"], r)
+        carol.fetch()
+        self.assertEqual(carol.open(carol.folder("requests")[0]["msg_id"])["body"], "got it")
+
     def test_crash_before_ack_keeps_mail(self):
         self.alice.send(self.bob.link(), "s", SECRET)
         real = self.bob._auth

@@ -204,6 +204,7 @@ class MailClient:
 
     def send(self, to, subject, body, attach=(), reply_to=None, ttl=None, stamp=None) -> dict:
         card = self._resolve(to)
+        self.ensure_registered()  # so a reply has an inbox to land in
         inner = M.make_message(self.key, self.xkey, self.st["hosts"], card, subject, body,
                                attach, reply_to, ts=self.clock())
         blob = M.seal(inner, card["x"])
