@@ -1,5 +1,10 @@
 # SRNet client (v0.2 Beta)
 
+<table>
+<tr><td align="center"><img src="docs/images/join-a-collection.png" width="420" alt="Join a collection"><br>Join a collection</td><td align="center"><img src="docs/images/shop-payment.png" width="420" alt="Paying a shop"><br>Paying a shop</td></tr>
+<tr><td align="center"><img src="docs/images/file-sharing.png" width="420" alt="Sharing an encrypted file"><br>Sharing an encrypted file</td><td align="center"><img src="docs/images/template-wiki.png" width="420" alt="Wiki history"><br>Wiki history</td></tr>
+</table>
+
 **What's new**
 
 - No developer fee anywhere in SRNet.
@@ -149,6 +154,15 @@ To stop Session Router from starting at boot: `sudo systemctl disable session-ro
 Start it yourself with `sudo systemctl start session-router-client`.
 
 ## Using the app
+
+### SNApp templates
+
+<table>
+<tr><td align="center"><img src="docs/images/template-board.png" width="420" alt="Board"><br>Board</td><td align="center"><img src="docs/images/template-room.png" width="420" alt="Chat room"><br>Chat room</td></tr>
+<tr><td align="center"><img src="docs/images/template-wiki.png" width="420" alt="Wiki"><br>Wiki</td><td align="center"><img src="docs/images/template-profile.png" width="420" alt="Profiles"><br>Profiles</td></tr>
+<tr><td align="center"><img src="docs/images/template-shop.png" width="420" alt="Shop"><br>Shop</td><td align="center"><img src="docs/images/template-drop.png" width="420" alt="File drop"><br>File drop</td></tr>
+<tr><td align="center"><img src="docs/images/template-directory.png" width="420" alt="Directory"><br>Directory</td></tr>
+</table>
 
 ### Joining
 
